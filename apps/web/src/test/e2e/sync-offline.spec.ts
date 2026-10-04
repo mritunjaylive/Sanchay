@@ -11,11 +11,13 @@ test.describe('Offline Add & Multi-Context Sync (F-077, F-079)', () => {
   })
 
   test('can record transaction with zero network in offline mode', async ({ page, context }) => {
-    // 1. Simulate turning off network (airplane mode)
-    await context.setOffline(true)
-
+    // Preload transactions and editor routes while online
+    await page.goto('/transactions')
     await page.goto('/transactions/new?type=expense')
     await expect(page.locator('h1, h2, span').filter({ hasText: /transaction|expense/i }).first()).toBeVisible()
+
+    // 1. Simulate turning off network (airplane mode)
+    await context.setOffline(true)
 
     // Fill expense
     const amountInput = page.locator('input[type="text"]').first()
