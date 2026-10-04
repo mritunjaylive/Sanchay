@@ -29,7 +29,7 @@ test.describe('Offline Add & Multi-Context Sync (F-077, F-079)', () => {
     }
 
     // Save while offline
-    const saveBtn = page.getByRole('button', { name: /save|add transaction/i }).first()
+    const saveBtn = page.getByRole('button', { name: 'Save', exact: true })
     await saveBtn.click()
 
     await page.waitForURL('**/transactions')

@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { seedTestUser, clearDatabase } from './helpers/seed'
 
 test.describe('Offline and Core UI Flows', () => {
+  test.beforeEach(async ({ page }) => {
+    await clearDatabase(page)
+    await seedTestUser(page, { onboarded: true, baseCurrency: 'INR' })
+  })
+
   test('App loads successfully and shows home dashboard', async ({ page }) => {
     await page.goto('/')
     // Expect title or logo to be visible

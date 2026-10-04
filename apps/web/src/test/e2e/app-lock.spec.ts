@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { seedTestUser, clearDatabase } from './helpers/seed'
+import { seedTestUser, clearDatabase, waitForDb } from './helpers/seed'
 
 test.describe('App Lock & Lockout Schedule (F-073)', () => {
   test.beforeEach(async ({ page }) => {
@@ -26,6 +26,7 @@ test.describe('App Lock & Lockout Schedule (F-073)', () => {
 
   test('AppLockModal displays lockout countdown after wrong attempts', async ({ page }) => {
     // Seed a locked state directly in db.kv
+    await waitForDb(page)
     await page.evaluate(async () => {
       const db = (window as unknown as { __SANCHAY_DB__?: { kv: { put: (data: unknown) => Promise<void> } } }).__SANCHAY_DB__
       if (!db) return

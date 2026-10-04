@@ -26,7 +26,7 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
     }
 
     // Save
-    const saveBtn = page.getByRole('button', { name: /save|add transaction/i }).first()
+    const saveBtn = page.getByRole('button', { name: 'Save', exact: true })
     await saveBtn.click()
 
     // Navigates back to transactions list
@@ -50,8 +50,8 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
     await toSelect.selectOption({ label: 'Cash Wallet' })
 
     // Save
-    const saveBtn = page.getByRole('button', { name: /save|add transaction/i }).first()
-    await saveBtn.click()
+    const transferSaveBtn = page.getByRole('button', { name: 'Save', exact: true })
+    await transferSaveBtn.click()
 
     await page.waitForURL('**/transactions')
 

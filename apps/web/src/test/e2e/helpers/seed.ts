@@ -4,6 +4,16 @@ import type { Account, Profile, Transaction, Budget, RecurringRule } from '@sanc
 export const TEST_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 /**
+ * Waits until window.__SANCHAY_DB__ is attached and ready.
+ */
+export async function waitForDb(page: Page) {
+  await page.waitForFunction(() => {
+    const w = window as unknown as { __SANCHAY_DB__?: unknown }
+    return Boolean(w.__SANCHAY_DB__)
+  }, undefined, { timeout: 10000 })
+}
+
+/**
  * Seeds an authenticated and optionally onboarded session in localStorage and Dexie.
  */
 export async function seedTestUser(
@@ -13,10 +23,13 @@ export async function seedTestUser(
   const { onboarded = true, baseCurrency = 'INR' } = options
 
   // 1. First navigate to page or origin so localStorage and IndexedDB are accessible
-  await page.goto('/')
+  if (page.url() === 'about:blank') {
+    await page.goto('/')
+  }
+  await waitForDb(page)
 
   await page.evaluate(
-    ({ userId, onboarded, baseCurrency }) => {
+    async ({ userId, onboarded, baseCurrency }) => {
       const mockSession = {
         access_token: 'offline_token',
         token_type: 'bearer',
@@ -59,17 +72,16 @@ export async function seedTestUser(
         version: 1,
       }
 
-      // If __SANCHAY_DB__ is ready, put into Dexie
       const anyWindow = window as unknown as { __SANCHAY_DB__?: { profiles: { put: (p: Profile) => Promise<void> } } }
       if (anyWindow.__SANCHAY_DB__) {
-        return anyWindow.__SANCHAY_DB__.profiles.put(profile)
+        await anyWindow.__SANCHAY_DB__.profiles.put(profile)
       }
-      return Promise.resolve()
     },
     { userId: TEST_USER_ID, onboarded, baseCurrency },
   )
 
   await page.reload()
+  await waitForDb(page)
 }
 
 /**
@@ -79,8 +91,9 @@ export async function seedAccounts(
   page: Page,
   accounts: Array<Partial<Account> & { name: string; currency?: string; openingBalanceMinor?: number }>,
 ) {
+  await waitForDb(page)
   return page.evaluate(
-    ({ accs, userId }) => {
+    async ({ accs, userId }) => {
       const anyWindow = window as unknown as { __SANCHAY_DB__?: { accounts: { bulkPut: (items: unknown[]) => Promise<void> } } }
       if (!anyWindow.__SANCHAY_DB__) return
 
@@ -108,7 +121,7 @@ export async function seedAccounts(
         version: 1,
       }))
 
-      return anyWindow.__SANCHAY_DB__.accounts.bulkPut(formatted)
+      await anyWindow.__SANCHAY_DB__.accounts.bulkPut(formatted)
     },
     { accs: accounts, userId: TEST_USER_ID },
   )
@@ -121,8 +134,9 @@ export async function seedTransactions(
   page: Page,
   transactions: Array<Partial<Transaction> & { accountId: string; amountMinor: number; type: 'income' | 'expense' | 'transfer' }>,
 ) {
+  await waitForDb(page)
   return page.evaluate(
-    ({ txs, userId }) => {
+    async ({ txs, userId }) => {
       const anyWindow = window as unknown as { __SANCHAY_DB__?: { transactions: { bulkPut: (items: unknown[]) => Promise<void> } } }
       if (!anyWindow.__SANCHAY_DB__) return
 
@@ -149,7 +163,7 @@ export async function seedTransactions(
         version: 1,
       }))
 
-      return anyWindow.__SANCHAY_DB__.transactions.bulkPut(formatted)
+      await anyWindow.__SANCHAY_DB__.transactions.bulkPut(formatted)
     },
     { txs: transactions, userId: TEST_USER_ID },
   )
@@ -159,42 +173,39 @@ export async function seedTransactions(
  * Clears all tables in the database.
  */
 export async function clearDatabase(page: Page) {
-  try {
-    if (page.url() === 'about:blank') {
-      await page.goto('/')
-    }
-    await page.evaluate(async () => {
-      try {
-        localStorage.clear()
-      } catch {
-        // ignore storage security errors
-      }
-      const anyWindow = window as unknown as {
-        __SANCHAY_DB__?: {
-          transaction: (mode: string, tables: unknown[], fn: () => Promise<void>) => Promise<void>
-          accounts: { clear: () => Promise<void> }
-          categories: { clear: () => Promise<void> }
-          transactions: { clear: () => Promise<void> }
-          budgets: { clear: () => Promise<void> }
-          recurringRules: { clear: () => Promise<void> }
-          loanTerms: { clear: () => Promise<void> }
-          profiles: { clear: () => Promise<void> }
-          kv: { clear: () => Promise<void> }
-        }
-      }
-      if (anyWindow.__SANCHAY_DB__) {
-        const d = anyWindow.__SANCHAY_DB__
-        await d.accounts.clear()
-        await d.categories.clear()
-        await d.transactions.clear()
-        await d.budgets.clear()
-        await d.recurringRules.clear()
-        await d.loanTerms.clear()
-        await d.profiles.clear()
-        await d.kv.clear()
-      }
-    })
-  } catch {
-    // ignore navigation/context destroyed errors during setup
+  if (page.url() === 'about:blank') {
+    await page.goto('/')
   }
+  await waitForDb(page)
+  await page.evaluate(async () => {
+    try {
+      localStorage.clear()
+    } catch {
+      // ignore storage security errors
+    }
+    const anyWindow = window as unknown as {
+      __SANCHAY_DB__?: {
+        transaction: (mode: string, tables: unknown[], fn: () => Promise<void>) => Promise<void>
+        accounts: { clear: () => Promise<void> }
+        categories: { clear: () => Promise<void> }
+        transactions: { clear: () => Promise<void> }
+        budgets: { clear: () => Promise<void> }
+        recurringRules: { clear: () => Promise<void> }
+        loanTerms: { clear: () => Promise<void> }
+        profiles: { clear: () => Promise<void> }
+        kv: { clear: () => Promise<void> }
+      }
+    }
+    if (anyWindow.__SANCHAY_DB__) {
+      const d = anyWindow.__SANCHAY_DB__
+      await d.accounts.clear()
+      await d.categories.clear()
+      await d.transactions.clear()
+      await d.budgets.clear()
+      await d.recurringRules.clear()
+      await d.loanTerms.clear()
+      await d.profiles.clear()
+      await d.kv.clear()
+    }
+  })
 }

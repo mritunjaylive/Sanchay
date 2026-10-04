@@ -26,7 +26,7 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
     await step2Continue.click()
 
     // Step 3: Finish onboarding
-    const finishBtn = page.getByRole('button', { name: /get started|finish|complete/i }).first()
+    const finishBtn = page.getByRole('button', { name: /start using sanchay|finish|complete/i }).first()
     await finishBtn.click()
 
     // Redirected to home dashboard

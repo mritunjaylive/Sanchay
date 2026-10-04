@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { seedTestUser, seedAccounts, clearDatabase, TEST_USER_ID } from './helpers/seed'
+import { seedTestUser, seedAccounts, clearDatabase, waitForDb, TEST_USER_ID } from './helpers/seed'
 
 test.describe('Budget Threshold Alert on Entry (F-039)', () => {
   test.beforeEach(async ({ page }) => {
@@ -10,6 +10,7 @@ test.describe('Budget Threshold Alert on Entry (F-039)', () => {
     ])
 
     // Seed category and budget in local DB
+    await waitForDb(page)
     await page.evaluate(({ userId }) => {
       const db = (window as unknown as {
         __SANCHAY_DB__?: {
@@ -23,8 +24,13 @@ test.describe('Budget Threshold Alert on Entry (F-039)', () => {
         id: 'cat-dining',
         userId,
         name: 'Food & Dining',
-        type: 'expense',
+        kind: 'expense',
+        parentId: null,
+        icon: 'Utensils',
+        color: '#ef4444',
         sortOrder: 0,
+        archivedAt: null,
+        systemKey: 'food_dining',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         deletedAt: null,
