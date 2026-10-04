@@ -32,7 +32,8 @@ export default {
           'Noto Sans Devanagari',
           'sans-serif',
         ],
-        cinzel: ['Cinzel', 'Georgia', 'Times New Roman', 'serif'],
+        cinzel: ['Cinzel', 'Khand', 'Georgia', 'Times New Roman', 'serif'],
+        khand: ['Khand', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         xs: '0.25rem',

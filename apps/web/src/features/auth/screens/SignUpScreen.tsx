@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../stores/authStore'
-import { Button, Input, LanguageSwitcher, Logo } from '../../../ui'
+import { Button, Input, LanguageSwitcher, Logo, BrandName } from '../../../ui'
 import { Mail, Lock, User, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function SignUpScreen() {
@@ -67,7 +67,9 @@ export default function SignUpScreen() {
         <div className="flex justify-center mb-3">
           <Logo size={52} className="shadow-md rounded-2xl" />
         </div>
-        <h1 className="font-cinzel text-3xl font-bold text-text tracking-wider">Sanchay</h1>
+        <h1 className="text-3xl font-bold text-text">
+          <BrandName />
+        </h1>
         <p className="text-sm text-text-muted mt-1">{t('auth.signUpSubtitle', 'Create your account to start tracking')}</p>
         <div className="flex justify-center mt-3">
           <LanguageSwitcher variant="buttons" />

@@ -7,7 +7,7 @@ import { useSyncStore } from '../../sync/stores/syncStore'
 import { syncEngine } from '../../sync/services/syncEngine'
 import { profileRepo } from '../../../db/repositories/profileRepo'
 import { db } from '../../../db/db'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Badge, Modal, Logo } from '../../../ui'
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Badge, Modal, Logo, BrandName } from '../../../ui'
 import { fxService } from '../../fx/services/fxService'
 import { useAppLock } from '../../auth/hooks/useAppLock'
 import {
@@ -441,9 +441,7 @@ export default function SettingsScreen() {
           className="inline-flex items-center gap-2.5 group hover:opacity-90 transition-opacity"
         >
           <Logo size={28} className="shadow-sm rounded-lg group-hover:scale-105 transition-transform" />
-          <span className="font-cinzel font-bold text-base text-text tracking-wider group-hover:text-primary transition-colors">
-            Sanchay
-          </span>
+          <BrandName className="text-base text-text group-hover:text-primary transition-colors" />
         </button>
         <p className="text-xs text-text-muted">
           Version 1.0.0 • 100% Offline-First Personal Finance

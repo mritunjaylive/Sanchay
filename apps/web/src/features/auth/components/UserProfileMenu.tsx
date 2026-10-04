@@ -142,7 +142,7 @@ export function UserProfileMenu() {
                 </p>
                 <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                   {profile?.baseCurrency && (
-                    <Badge variant="outline" size="sm" className="font-mono text-[10px]">
+                    <Badge variant="neutral" size="sm" className="font-mono text-[10px]">
                       {profile.baseCurrency}
                     </Badge>
                   )}

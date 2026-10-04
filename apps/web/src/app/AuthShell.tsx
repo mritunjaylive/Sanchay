@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Outlet, Link } from 'react-router-dom'
-import { LoadingSpinner, Logo } from '../ui'
+import { LoadingSpinner, Logo, BrandName } from '../ui'
 
 export function AuthShell() {
   return (
@@ -11,9 +11,7 @@ export function AuthShell() {
           <div className="group-hover:scale-105 transition-transform">
             <Logo size={36} className="shadow-sm rounded-xl" />
           </div>
-          <span className="font-cinzel font-bold text-xl text-text tracking-wider group-hover:text-primary transition-colors">
-            Sanchay
-          </span>
+          <BrandName className="text-xl text-text group-hover:text-primary transition-colors" />
         </Link>
       </header>
 
@@ -32,7 +30,7 @@ export function AuthShell() {
 
       {/* Subtle Footer */}
       <footer className="w-full max-w-lg mx-auto py-3 text-center text-xs text-text-muted">
-        <span>© {new Date().getFullYear()} Sanchay • 100% Offline-First Personal Finance</span>
+        <span>© {new Date().getFullYear()} <BrandName className="text-xs" /> • 100% Offline-First Personal Finance</span>
       </footer>
     </div>
   )

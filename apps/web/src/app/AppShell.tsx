@@ -10,7 +10,7 @@ import { SyncStatusBadge } from '../features/sync/components/SyncStatusBadge'
 import { NotificationCenter } from '../features/notifications/components/NotificationCenter'
 import { UserProfileMenu } from '../features/auth'
 import { QuickAddFAB } from '../features/transactions/components/QuickAddFAB'
-import { LoadingSpinner, Logo } from '../ui'
+import { LoadingSpinner, Logo, BrandName } from '../ui'
 import { cn } from '../lib/cn'
 
 export function AppShell() {
@@ -30,7 +30,7 @@ export function AppShell() {
           <div className="flex items-center gap-2.5">
             {/* Mobile: app name */}
             <Logo size={24} className="md:hidden" />
-            <span className="font-cinzel font-bold text-lg gradient-text md:hidden tracking-wider">{t('app.name')}</span>
+            <BrandName gradientText className="text-lg md:hidden" />
             {/* Desktop: page title comes from route */}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
@@ -89,7 +89,7 @@ function SidebarContent() {
       {/* Logo */}
       <div className="px-6 h-14 flex items-center gap-3 border-b border-border">
         <Logo size={28} className="shadow-sm rounded-lg" />
-        <span className="font-cinzel text-xl font-bold gradient-text tracking-wider">{t('app.name')}</span>
+        <BrandName gradientText className="text-xl" />
       </div>
 
       {/* Nav links */}

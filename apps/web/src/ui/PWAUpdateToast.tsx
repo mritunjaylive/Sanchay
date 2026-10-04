@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { applyUpdate } from '../pwa/register'
-import { Logo } from './Logo'
+import { Logo, BrandName } from './Logo'
 
 /**
  * PWA update toast — shown when a new service worker is waiting.
@@ -40,7 +40,7 @@ export function PWAUpdateToast() {
             <div>
               <p className="font-medium text-sm">Update available</p>
               <p className="text-text-muted text-xs mt-0.5">
-                A new version of <span className="font-cinzel font-semibold tracking-wide">Sanchay</span> is ready.
+                A new version of <BrandName className="font-semibold tracking-wide" /> is ready.
               </p>
             </div>
           </div>

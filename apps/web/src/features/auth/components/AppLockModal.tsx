@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lock, Delete, AlertCircle } from 'lucide-react'
-import { Button, Logo } from '../../../ui'
+import { Button, Logo, BrandName } from '../../../ui'
 
 export interface AppLockModalProps {
   isOpen: boolean
@@ -68,7 +68,7 @@ export function AppLockModal({ isOpen, onUnlock }: AppLockModalProps) {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-text"><span className="font-cinzel tracking-wider">Sanchay</span> Locked</h2>
+          <h2 className="text-xl font-bold text-text"><BrandName /> Locked</h2>
           <p className="text-xs text-text-muted mt-1">Enter your PIN to unlock</p>
         </div>
 

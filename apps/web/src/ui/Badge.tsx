@@ -2,7 +2,7 @@ import React from 'react'
 import { cn } from '../lib/cn'
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral'
+  variant?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'outline'
   size?: 'sm' | 'md'
 }
 
@@ -19,6 +19,7 @@ export function Badge({
     warning: 'bg-warning/10 text-warning border-warning/20',
     danger: 'bg-danger/10 text-danger border-danger/20',
     neutral: 'bg-surface-overlay text-text-muted border-border',
+    outline: 'bg-transparent text-text-muted border-border',
   }
 
   const sizes = {

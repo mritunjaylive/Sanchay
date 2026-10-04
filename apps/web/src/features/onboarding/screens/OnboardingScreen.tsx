@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../auth/stores/authStore'
-import { Button, Input, Select, Card, Logo } from '../../../ui'
+import { Button, Input, Select, Card, Logo, BrandName } from '../../../ui'
 import { accountRepo } from '../../../db/repositories/accountRepo'
 import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { profileRepo } from '../../../db/repositories/profileRepo'
@@ -101,7 +101,7 @@ export default function OnboardingScreen() {
                 <Logo size={56} className="shadow-md rounded-2xl" />
               </div>
               <h2 className="text-xl font-bold text-text">
-                {t('onboarding.welcome', 'Welcome to')} <span className="font-cinzel font-bold tracking-wider">Sanchay</span>
+                {t('onboarding.welcome', 'Welcome to')} <BrandName />
               </h2>
               <p className="text-sm text-text-muted mt-1">
                 {t('onboarding.step1Desc', 'Choose your preferred language and base currency')}

@@ -1,4 +1,5 @@
 import React, { useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../lib/cn'
 
 export interface LogoProps extends React.SVGProps<SVGSVGElement> {
@@ -50,6 +51,31 @@ export function Logo({
   )
 }
 
+export interface BrandNameProps {
+  className?: string
+  gradientText?: boolean
+}
+
+export function BrandName({ className, gradientText = false }: BrandNameProps) {
+  const { t, i18n } = useTranslation()
+  const name = t('app.name', 'Sanchay')
+  const isHindi =
+    (i18n.resolvedLanguage || i18n.language || '').startsWith('hi') ||
+    /[\u0900-\u097F]/.test(name)
+
+  return (
+    <span
+      className={cn(
+        isHindi ? 'font-khand font-bold tracking-wide' : 'font-cinzel font-bold tracking-wider',
+        gradientText && 'gradient-text',
+        className,
+      )}
+    >
+      {name}
+    </span>
+  )
+}
+
 export interface LogoBrandProps {
   logoSize?: number | string
   textSize?: string
@@ -66,15 +92,7 @@ export function LogoBrand({
   return (
     <div className={cn('inline-flex items-center gap-2.5', className)}>
       <Logo size={logoSize} />
-      <span
-        className={cn(
-          'font-cinzel font-bold tracking-wider',
-          textSize,
-          gradientText ? 'gradient-text' : 'text-text',
-        )}
-      >
-        Sanchay
-      </span>
+      <BrandName className={textSize} gradientText={gradientText} />
     </div>
   )
 }

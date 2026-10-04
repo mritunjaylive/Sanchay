@@ -23,7 +23,14 @@ void i18n
   })
 
 // Lazy-load non-English locales when active or switched to
+const updateHtmlLang = (lng: string) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lng.startsWith('hi') ? 'hi' : 'en'
+  }
+}
+
 const loadLocaleIfNeeded = async (lng: string) => {
+  updateHtmlLang(lng)
   if (lng.startsWith('hi') && !i18n.hasResourceBundle('hi', 'translation')) {
     const hi = await import('./locales/hi.json')
     i18n.addResourceBundle('hi', 'translation', hi.default, true, true)
