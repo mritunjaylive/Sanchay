@@ -3,3 +3,5 @@
  */
 
 export * from './stores/authStore'
+export * from './components/UserProfileMenu'
+

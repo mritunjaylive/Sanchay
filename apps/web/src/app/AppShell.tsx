@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { SyncStatusBadge } from '../features/sync/components/SyncStatusBadge'
 import { NotificationCenter } from '../features/notifications/components/NotificationCenter'
+import { UserProfileMenu } from '../features/auth'
 import { QuickAddFAB } from '../features/transactions/components/QuickAddFAB'
 import { LoadingSpinner, Logo } from '../ui'
 import { cn } from '../lib/cn'
@@ -32,9 +33,10 @@ export function AppShell() {
             <span className="font-cinzel font-bold text-lg gradient-text md:hidden tracking-wider">{t('app.name')}</span>
             {/* Desktop: page title comes from route */}
           </div>
-          <div className="flex items-center gap-2">
-            <NotificationCenter />
+          <div className="flex items-center gap-2 sm:gap-3">
             <SyncStatusBadge />
+            <NotificationCenter />
+            <UserProfileMenu />
           </div>
         </header>
 
