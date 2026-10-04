@@ -5,7 +5,7 @@ export const categorySchema = syncRowSchema.extend({
   name: z.string().min(1).max(80),
   kind: z.enum(['income', 'expense']),
   parentId: z.string().uuid().nullable(),
-  icon: z.string().max(10).nullable(),
+  icon: z.string().max(40).nullable(),
   color: z.string().max(20).nullable(),
   sortOrder: z.number().int().default(0),
   archivedAt: z.string().datetime().nullable(),
