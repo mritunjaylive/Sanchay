@@ -43,6 +43,22 @@ export default function BillsScreen() {
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).sortBy('sortOrder'), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
+  const uniqueRelevantCategories = useMemo(() => {
+    if (!categories) return []
+    const seen = new Set<string>()
+    const list: typeof categories = []
+    for (const c of categories) {
+      if (user?.id && c.userId && c.userId !== user.id) continue
+      if (c.kind !== type) continue
+      const norm = c.name.trim().toLowerCase()
+      if (!seen.has(norm)) {
+        seen.add(norm)
+        list.push(c)
+      }
+    }
+    return list
+  }, [categories, type, user?.id])
+
   const accountMap = useMemo(() => {
     const map = new Map<string, string>()
     accounts?.forEach((a) => map.set(a.id, a.name))
@@ -395,9 +411,7 @@ export default function BillsScreen() {
               onChange={(e) => setCategoryId(e.target.value)}
               options={[
                 { value: '', label: '-- None --' },
-                ...(categories
-                  ?.filter((c) => c.kind === type)
-                  .map((c) => ({ value: c.id, label: c.name })) ?? []),
+                ...uniqueRelevantCategories.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
           </div>

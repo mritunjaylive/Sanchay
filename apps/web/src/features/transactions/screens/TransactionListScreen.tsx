@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { db } from '../../../db/db'
 import { transactionRepo } from '../../../db/repositories/transactionRepo'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
+import { useAuthStore } from '../../auth/stores/authStore'
 import { useToastStore } from '../../../ui/Toast'
 import { formatMoney } from '../../../lib/money'
 import { Button, Input, Select, Card, Badge } from '../../../ui'
@@ -26,6 +27,7 @@ import type { Transaction, TransactionType } from '@sanchay/shared'
 export default function TransactionListScreen() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.session?.user)
   const { hideBalances, baseCurrency, locale } = useSettingsStore()
   const showToast = useToastStore((s) => s.showToast)
 
@@ -47,6 +49,22 @@ export default function TransactionListScreen() {
   )
   const accounts = useLiveQuery(() => db.accounts.filter((a) => !a.deletedAt).toArray(), [])
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [])
+
+  // Deduplicated categories for filter dropdown
+  const uniqueCategories = useMemo(() => {
+    if (!categories) return []
+    const seen = new Set<string>()
+    const list: typeof categories = []
+    for (const c of categories) {
+      if (user?.id && c.userId && c.userId !== user.id) continue
+      const norm = `${c.kind}:${c.name.trim().toLowerCase()}`
+      if (!seen.has(norm)) {
+        seen.add(norm)
+        list.push(c)
+      }
+    }
+    return list
+  }, [categories, user?.id])
 
   // Lookup maps
   const accountMap = useMemo(() => {
@@ -297,7 +315,7 @@ export default function TransactionListScreen() {
               onChange={(e) => setCategoryFilter(e.target.value)}
               options={[
                 { value: 'all', label: 'All Categories' },
-                ...(categories?.map((c) => ({ value: c.id, label: c.name })) ?? []),
+                ...uniqueCategories.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
           </div>

@@ -3,6 +3,7 @@ import { db } from '../../../db/db'
 import type { Session } from '@supabase/supabase-js'
 import type { Profile } from '@sanchay/shared'
 import { profileRepo } from '../../../db/repositories/profileRepo'
+import { categoryRepo } from '../../../db/repositories/categoryRepo'
 
 async function getSupabase() {
   const { supabase } = await import('../../../lib/supabase')
@@ -70,8 +71,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (session?.user) {
         const profile = await profileRepo.getByUserId(session.user.id)
         set({ session, profile: profile ?? null, isLoading: false })
+        void categoryRepo.deduplicateCategories(session.user.id)
       } else {
         set({ session: null, profile: null, isLoading: false })
+        void categoryRepo.deduplicateCategories()
       }
 
       // Subscribe to auth changes
@@ -79,6 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (session?.user) {
           const profile = await profileRepo.getByUserId(session.user.id)
           set({ session, profile: profile ?? null })
+          void categoryRepo.deduplicateCategories(session.user.id)
         } else if (!localStorage.getItem('sanchay_offline_session')) {
           set({ session: null, profile: null })
         }

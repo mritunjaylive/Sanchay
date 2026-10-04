@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { User } from 'lucide-react'
 import { cn } from '../lib/cn'
 
@@ -24,17 +24,36 @@ function getInitials(name?: string | null): string {
   if (parts.length === 1) {
     return (parts[0]?.slice(0, 2) ?? '').toUpperCase()
   }
-  return (((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase())
+  return ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase()
 }
 
 export function Avatar({ src, name, size = 'md', className, alt }: AvatarProps) {
-  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
   const initials = getInitials(name)
   const sizeClasses = typeof size === 'string' ? SIZE_MAP[size] : ''
   const inlineStyle =
     typeof size === 'number'
       ? { width: size, height: size, fontSize: Math.max(10, Math.round(size * 0.38)) }
       : undefined
+
+  useEffect(() => {
+    if (!src) {
+      setImageLoaded(false)
+      return
+    }
+    let isCurrent = true
+    const img = new Image()
+    img.src = src
+    img.onload = () => {
+      if (isCurrent) setImageLoaded(true)
+    }
+    img.onerror = () => {
+      if (isCurrent) setImageLoaded(false)
+    }
+    return () => {
+      isCurrent = false
+    }
+  }, [src])
 
   return (
     <div
@@ -47,11 +66,10 @@ export function Avatar({ src, name, size = 'md', className, alt }: AvatarProps) 
       )}
       title={name || alt || undefined}
     >
-      {src && !imageError ? (
+      {src && imageLoaded ? (
         <img
           src={src}
           alt={alt || name || 'User avatar'}
-          onError={() => setImageError(true)}
           className="w-full h-full object-cover"
         />
       ) : initials ? (

@@ -2,7 +2,7 @@
  * db/repositories/categoryRepo.ts — Category and Tag repository.
  *
  * Supports hierarchical categories (up to 2 levels), merge, reassignment on delete,
- * and default category seeding per spec section 20.
+ * duplicate cleanup, and idempotent default category seeding per spec section 20.
  *
  * @see Sanchay_spec.md section 7.2, 7.5, 20
  */
@@ -17,8 +17,10 @@ export const categoryRepo = {
     return db.categories.get(id)
   },
 
-  async getAll(): Promise<Category[]> {
-    return db.categories.filter((c) => !c.deletedAt).sortBy('sortOrder')
+  async getAll(userId?: string): Promise<Category[]> {
+    return db.categories
+      .filter((c) => !c.deletedAt && (!userId || !c.userId || c.userId === userId))
+      .sortBy('sortOrder')
   },
 
   async create(data: Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'serverSeq' | 'version'>): Promise<Category> {
@@ -81,12 +83,101 @@ export const categoryRepo = {
   },
 
   /**
+   * Cleans up any duplicate category rows in IndexedDB.
+   * Remaps transactions, budgets, and recurring rules from duplicate to canonical category.
+   */
+  async deduplicateCategories(userId?: string): Promise<void> {
+    const all = await db.categories.filter((c) => !c.deletedAt).toArray()
+    if (all.length === 0) return
+
+    // Sort to prioritize keeping rows matching the active userId, then by sortOrder
+    const sorted = [...all].sort((a, b) => {
+      if (userId) {
+        if (a.userId === userId && b.userId !== userId) return -1
+        if (b.userId === userId && a.userId !== userId) return 1
+      }
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+    })
+
+    const canonicalMap = new Map<string, Category>()
+    const duplicates: { duplicate: Category; canonical: Category }[] = []
+
+    for (const cat of sorted) {
+      const normName = cat.name.trim().toLowerCase()
+      // If userId is provided, group per user if possible, or cross-user if one is orphan/offline
+      const key = `${cat.kind}:${normName}`
+      const existing = canonicalMap.get(key)
+      if (!existing) {
+        canonicalMap.set(key, cat)
+      } else {
+        duplicates.push({ duplicate: cat, canonical: existing })
+      }
+    }
+
+    if (duplicates.length === 0) return
+
+    for (const { duplicate, canonical } of duplicates) {
+      // 1. Reassign transactions
+      const txs = await db.transactions
+        .filter((tx) => !tx.deletedAt && tx.categoryId === duplicate.id)
+        .toArray()
+      for (const tx of txs) {
+        await upsertWithOutbox(db.transactions, 'transactions', {
+          ...tx,
+          categoryId: canonical.id,
+          updatedAt: new Date().toISOString(),
+          version: (tx.version ?? 1) + 1,
+        })
+      }
+
+      // 2. Reassign budgets
+      const budgets = await db.budgets
+        .filter((b) => !b.deletedAt && b.categoryId === duplicate.id)
+        .toArray()
+      for (const b of budgets) {
+        await upsertWithOutbox(db.budgets, 'budgets', {
+          ...b,
+          categoryId: canonical.id,
+          updatedAt: new Date().toISOString(),
+          version: (b.version ?? 1) + 1,
+        })
+      }
+
+      // 3. Reassign recurring rules
+      const rules = await db.recurringRules
+        .filter((r) => !r.deletedAt && r.categoryId === duplicate.id)
+        .toArray()
+      for (const r of rules) {
+        await upsertWithOutbox(db.recurringRules, 'recurring_rules', {
+          ...r,
+          categoryId: canonical.id,
+          updatedAt: new Date().toISOString(),
+          version: (r.version ?? 1) + 1,
+        })
+      }
+
+      // 4. Delete the duplicate category from local table and outbox
+      await db.categories.delete(duplicate.id)
+      await db.outbox
+        .where('table')
+        .equals('categories')
+        .and((e) => e.rowId === duplicate.id)
+        .delete()
+    }
+  },
+
+  /**
    * Seeds default categories for a new user if none exist.
+   * Idempotent: skips any category whose name already exists.
    * Spec section 20 standard categories.
    */
   async seedDefaultCategories(userId: string): Promise<void> {
-    const existingCount = await db.categories.where('userId').equals(userId).count()
-    if (existingCount > 0) return
+    await this.deduplicateCategories(userId)
+
+    const existing = await db.categories.filter((c) => !c.deletedAt).toArray()
+    const existingKeys = new Set(
+      existing.map((c) => `${c.kind}:${c.name.trim().toLowerCase()}`),
+    )
 
     const defaultExpense = [
       { name: 'Food & Dining', icon: 'Utensils', color: '#f97316' },
@@ -112,8 +203,11 @@ export const categoryRepo = {
       { name: 'Other Income', icon: 'Coins', color: '#64748b' },
     ]
 
-    let sortOrder = 0
+    let sortOrder = existing.length
     for (const item of defaultExpense) {
+      const key = `expense:${item.name.trim().toLowerCase()}`
+      if (existingKeys.has(key)) continue
+      existingKeys.add(key)
       await this.create({
         userId,
         name: item.name,
@@ -128,6 +222,9 @@ export const categoryRepo = {
     }
 
     for (const item of defaultIncome) {
+      const key = `income:${item.name.trim().toLowerCase()}`
+      if (existingKeys.has(key)) continue
+      existingKeys.add(key)
       await this.create({
         userId,
         name: item.name,

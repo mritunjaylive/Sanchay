@@ -34,6 +34,22 @@ export default function BudgetsScreen() {
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
+  const uniqueExpenseCategories = useMemo(() => {
+    if (!categories) return []
+    const seen = new Set<string>()
+    const list: typeof categories = []
+    for (const c of categories) {
+      if (user?.id && c.userId && c.userId !== user.id) continue
+      if (c.kind !== 'expense') continue
+      const norm = c.name.trim().toLowerCase()
+      if (!seen.has(norm)) {
+        seen.add(norm)
+        list.push(c)
+      }
+    }
+    return list
+  }, [categories, user?.id])
+
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>()
     categories?.forEach((c) => map.set(c.id, c.name))
@@ -279,9 +295,7 @@ export default function BudgetsScreen() {
               onChange={(e) => setSelectedCategory(e.target.value)}
               options={[
                 { value: 'overall', label: `★ ${t('budgets.overallBudget', 'Overall Budget (All Categories)')}` },
-                ...(categories
-                  ?.filter((c) => c.kind === 'expense')
-                  .map((c) => ({ value: c.id, label: c.name })) ?? []),
+                ...uniqueExpenseCategories.map((c) => ({ value: c.id, label: c.name })),
               ]}
             />
           )}

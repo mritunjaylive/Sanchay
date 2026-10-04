@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { db } from '../../../db/db'
 import { transactionRepo } from '../../../db/repositories/transactionRepo'
+import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { useAuthStore } from '../../auth/stores/authStore'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { parseAmountToMinor, formatMoney } from '../../../lib/money'
@@ -268,11 +269,27 @@ export default function TransactionEditorScreen() {
     }
   }
 
-  const relevantCategories = (categories ?? []).filter((c) => {
-    if (type === 'expense') return c.kind === 'expense'
-    if (type === 'income') return c.kind === 'income'
-    return false
-  })
+  // Deduplicate on mount if duplicates exist in local DB
+  useEffect(() => {
+    void categoryRepo.deduplicateCategories(user?.id)
+  }, [user?.id])
+
+  const relevantCategories = useMemo(() => {
+    if (!categories) return []
+    const seen = new Set<string>()
+    const list: typeof categories = []
+    for (const c of categories) {
+      if (user?.id && c.userId && c.userId !== user.id) continue
+      if (type === 'expense' && c.kind !== 'expense') continue
+      if (type === 'income' && c.kind !== 'income') continue
+      const norm = c.name.trim().toLowerCase()
+      if (!seen.has(norm)) {
+        seen.add(norm)
+        list.push(c)
+      }
+    }
+    return list
+  }, [categories, type, user?.id])
 
   return (
     <div className="space-y-5 pb-20 md:pb-8 max-w-xl mx-auto">
