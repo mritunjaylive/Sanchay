@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Sanchay — offline-first personal finance PWA",
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm --filter @sanchay/web dev",
     "build": "pnpm --filter @sanchay/web build",
