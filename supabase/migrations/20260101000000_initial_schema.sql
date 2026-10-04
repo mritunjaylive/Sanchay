@@ -87,6 +87,32 @@ create trigger set_accounts_server_seq
   before insert or update on public.accounts
   for each row execute function public.set_server_seq();
 
+-- ── categories ────────────────────────────────────────────────────
+create table public.categories (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null check (length(name) between 1 and 80),
+  kind text not null check (kind in ('income','expense')),
+  parent_id uuid references public.categories(id),
+  icon text check (length(icon) <= 10),
+  color text check (length(color) <= 20),
+  sort_order int not null default 0,
+  archived_at timestamptz,
+  system_key text check (length(system_key) <= 80),
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
+  deleted_at timestamptz,
+  server_seq bigint not null default 0,
+  version int not null default 1
+);
+
+create index on public.categories (user_id, server_seq);
+create index on public.categories (user_id, kind, parent_id);
+
+create trigger set_categories_server_seq
+  before insert or update on public.categories
+  for each row execute function public.set_server_seq();
+
 -- ── loan_terms ────────────────────────────────────────────────────
 create table public.loan_terms (
   id uuid primary key,
@@ -116,31 +142,6 @@ create trigger set_loan_terms_server_seq
   before insert or update on public.loan_terms
   for each row execute function public.set_server_seq();
 
--- ── categories ────────────────────────────────────────────────────
-create table public.categories (
-  id uuid primary key,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null check (length(name) between 1 and 80),
-  kind text not null check (kind in ('income','expense')),
-  parent_id uuid references public.categories(id),
-  icon text check (length(icon) <= 10),
-  color text check (length(color) <= 20),
-  sort_order int not null default 0,
-  archived_at timestamptz,
-  system_key text check (length(system_key) <= 80),
-  created_at timestamptz not null,
-  updated_at timestamptz not null,
-  deleted_at timestamptz,
-  server_seq bigint not null default 0,
-  version int not null default 1
-);
-
-create index on public.categories (user_id, server_seq);
-create index on public.categories (user_id, kind, parent_id);
-
-create trigger set_categories_server_seq
-  before insert or update on public.categories
-  for each row execute function public.set_server_seq();
 
 -- ── tags ──────────────────────────────────────────────────────────
 create table public.tags (
