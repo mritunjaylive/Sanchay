@@ -10,6 +10,15 @@ export default function SignInScreen() {
   const navigate = useNavigate()
   const { signInWithEmail, signInWithGoogle, signInOffline, isLoading, error, clearError } = useAuthStore()
 
+  // Only show offline demo mode button in local dev when not using a deployed/cloud Supabase instance
+  const isDeployedOrCloudSupabase =
+    import.meta.env.PROD ||
+    (Boolean(import.meta.env['VITE_SUPABASE_URL']) &&
+      !import.meta.env['VITE_SUPABASE_URL'].includes('127.0.0.1') &&
+      !import.meta.env['VITE_SUPABASE_URL'].includes('localhost'))
+
+  const showOfflineMode = !isDeployedOrCloudSupabase
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
@@ -145,17 +154,19 @@ export default function SignInScreen() {
         {t('auth.continueWithGoogle', 'Continue with Google')}
       </Button>
 
-      <div className="mt-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full border-dashed border-primary/40 text-primary hover:bg-primary/5"
-          onClick={handleOffline}
-          isLoading={isLoading}
-        >
-          ⚡ {t('auth.continueOffline', 'Continue in Offline / Demo Mode')}
-        </Button>
-      </div>
+      {showOfflineMode && (
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-dashed border-primary/40 text-primary hover:bg-primary/5"
+            onClick={handleOffline}
+            isLoading={isLoading}
+          >
+            ⚡ {t('auth.continueOffline', 'Continue in Offline / Demo Mode')}
+          </Button>
+        </div>
+      )}
 
       <p className="mt-6 text-center text-sm text-text-muted">
         {t('auth.noAccount', "Don't have an account?")}{' '}

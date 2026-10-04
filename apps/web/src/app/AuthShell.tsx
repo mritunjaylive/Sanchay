@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Outlet, Link } from 'react-router-dom'
-import { LoadingSpinner, LanguageSwitcher, Logo } from '../ui'
+import { LoadingSpinner, Logo } from '../ui'
 
 export function AuthShell() {
   return (
@@ -15,7 +15,6 @@ export function AuthShell() {
             Sanchay
           </span>
         </Link>
-        <LanguageSwitcher variant="pill" />
       </header>
 
       {/* Main Form Content */}

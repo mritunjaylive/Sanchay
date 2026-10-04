@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../stores/authStore'
-import { Button, Input, Logo } from '../../../ui'
+import { Button, Input, LanguageSwitcher, Logo } from '../../../ui'
 import { Mail, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react'
 
 export default function MagicLinkScreen() {
@@ -40,6 +40,9 @@ export default function MagicLinkScreen() {
         <p className="text-sm text-text-muted mt-1">
           {t('auth.magicLinkSubtitle', "Enter your email and we'll send you an instant login link.")}
         </p>
+        <div className="flex justify-center mt-3">
+          <LanguageSwitcher variant="buttons" />
+        </div>
       </div>
 
       {isSent ? (
