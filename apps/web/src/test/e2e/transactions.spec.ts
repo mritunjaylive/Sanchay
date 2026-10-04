@@ -13,7 +13,7 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
 
   test('can add an expense transaction and see it in the list', async ({ page }) => {
     await page.goto('/transactions/new?type=expense')
-    await expect(page.getByRole('button', { name: 'Expense', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^expense$/i })).toBeVisible()
 
     // Enter amount
     const amountInput = page.locator('input[inputmode="decimal"]').first()
@@ -34,7 +34,7 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
   test('can perform transfer between accounts: balances change, net worth unchanged', async ({ page }) => {
     await page.goto('/transactions/new?type=transfer')
 
-    await expect(page.getByRole('button', { name: 'Transfer', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^transfer$/i })).toBeVisible()
 
     // Enter amount
     const amountInput = page.locator('input[inputmode="decimal"]').first()

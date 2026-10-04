@@ -7,6 +7,11 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
   })
 
   test('non-onboarded user is redirected to /onboarding and can complete steps', async ({ page }) => {
+    // Surface app-side failures (handleFinish swallows errors with console.error)
+    const problems: string[] = []
+    page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()) })
+    page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`))
+
     // Seed authenticated session but NOT onboarded
     await seedTestUser(page, { onboarded: false, baseCurrency: 'INR' })
 
@@ -30,7 +35,7 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
     await finishBtn.click()
 
     // Redirected to home dashboard
-    await page.waitForURL('**/')
+    await expect(page, `console errors: ${problems.join(' | ') || 'none'}`).toHaveURL(/\/$/, { timeout: 15000 })
     await expect(page.locator('text=Sanchay').first()).toBeVisible()
   })
 })

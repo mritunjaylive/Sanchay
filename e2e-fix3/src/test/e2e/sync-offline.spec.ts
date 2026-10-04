@@ -14,7 +14,7 @@ test.describe('Offline Add & Multi-Context Sync (F-077, F-079)', () => {
     // Preload transactions and editor routes while online
     await page.goto('/transactions')
     await page.goto('/transactions/new?type=expense')
-    await expect(page.getByRole('button', { name: 'Expense', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^expense$/i })).toBeVisible()
 
     // 1. Simulate turning off network (airplane mode)
     await context.setOffline(true)
