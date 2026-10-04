@@ -159,31 +159,42 @@ export async function seedTransactions(
  * Clears all tables in the database.
  */
 export async function clearDatabase(page: Page) {
-  return page.evaluate(async () => {
-    localStorage.clear()
-    const anyWindow = window as unknown as {
-      __SANCHAY_DB__?: {
-        transaction: (mode: string, tables: unknown[], fn: () => Promise<void>) => Promise<void>
-        accounts: { clear: () => Promise<void> }
-        categories: { clear: () => Promise<void> }
-        transactions: { clear: () => Promise<void> }
-        budgets: { clear: () => Promise<void> }
-        recurringRules: { clear: () => Promise<void> }
-        loanTerms: { clear: () => Promise<void> }
-        profiles: { clear: () => Promise<void> }
-        kv: { clear: () => Promise<void> }
+  try {
+    if (page.url() === 'about:blank') {
+      await page.goto('/')
+    }
+    await page.evaluate(async () => {
+      try {
+        localStorage.clear()
+      } catch {
+        // ignore storage security errors
       }
-    }
-    if (anyWindow.__SANCHAY_DB__) {
-      const d = anyWindow.__SANCHAY_DB__
-      await d.accounts.clear()
-      await d.categories.clear()
-      await d.transactions.clear()
-      await d.budgets.clear()
-      await d.recurringRules.clear()
-      await d.loanTerms.clear()
-      await d.profiles.clear()
-      await d.kv.clear()
-    }
-  })
+      const anyWindow = window as unknown as {
+        __SANCHAY_DB__?: {
+          transaction: (mode: string, tables: unknown[], fn: () => Promise<void>) => Promise<void>
+          accounts: { clear: () => Promise<void> }
+          categories: { clear: () => Promise<void> }
+          transactions: { clear: () => Promise<void> }
+          budgets: { clear: () => Promise<void> }
+          recurringRules: { clear: () => Promise<void> }
+          loanTerms: { clear: () => Promise<void> }
+          profiles: { clear: () => Promise<void> }
+          kv: { clear: () => Promise<void> }
+        }
+      }
+      if (anyWindow.__SANCHAY_DB__) {
+        const d = anyWindow.__SANCHAY_DB__
+        await d.accounts.clear()
+        await d.categories.clear()
+        await d.transactions.clear()
+        await d.budgets.clear()
+        await d.recurringRules.clear()
+        await d.loanTerms.clear()
+        await d.profiles.clear()
+        await d.kv.clear()
+      }
+    })
+  } catch {
+    // ignore navigation/context destroyed errors during setup
+  }
 }

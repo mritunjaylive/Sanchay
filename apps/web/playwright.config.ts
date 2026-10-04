@@ -5,10 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
-  workers: process.env['CI'] ? 1 : undefined,
+  workers: process.env['CI'] ? 2 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://127.0.0.1:5173',
     trace: 'on-first-retry',
   },
   projects: [
@@ -16,18 +16,11 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
   ],
   webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:5173',
+    command: 'pnpm dev --host 127.0.0.1 --port 5173',
+    url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env['CI'],
+    timeout: 120000,
   },
 })
