@@ -104,3 +104,10 @@ apps/web/diagnose.cjs
 scratch/
 *.tmp
 *.temp
+
+# Internal specifications, prompts & agent instructions
+AGENTS.md
+feature.md
+FIX_PROMPTS.md
+implementation_plan.md
+Sanchay_spec.md
