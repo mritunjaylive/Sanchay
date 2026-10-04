@@ -11,7 +11,7 @@ export function AuthShell() {
           <div className="group-hover:scale-105 transition-transform">
             <Logo size={36} className="shadow-sm rounded-xl" />
           </div>
-          <span className="font-bold text-xl text-text tracking-tight group-hover:text-primary transition-colors">
+          <span className="font-cinzel font-bold text-xl text-text tracking-wider group-hover:text-primary transition-colors">
             Sanchay
           </span>
         </Link>

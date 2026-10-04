@@ -57,7 +57,7 @@ export default function SignInScreen() {
         <div className="flex justify-center mb-3">
           <Logo size={52} className="shadow-md rounded-2xl" />
         </div>
-        <h1 className="text-2xl font-bold text-text">Sanchay</h1>
+        <h1 className="font-cinzel text-3xl font-bold text-text tracking-wider">Sanchay</h1>
         <p className="text-sm text-text-muted mt-1">{t('auth.signInSubtitle', 'Sign in to manage your finances')}</p>
         <div className="flex justify-center mt-3">
           <LanguageSwitcher variant="buttons" />

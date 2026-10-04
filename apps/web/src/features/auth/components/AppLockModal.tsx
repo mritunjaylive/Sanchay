@@ -68,7 +68,7 @@ export function AppLockModal({ isOpen, onUnlock }: AppLockModalProps) {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-text">Sanchay Locked</h2>
+          <h2 className="text-xl font-bold text-text"><span className="font-cinzel tracking-wider">Sanchay</span> Locked</h2>
           <p className="text-xs text-text-muted mt-1">Enter your PIN to unlock</p>
         </div>
 

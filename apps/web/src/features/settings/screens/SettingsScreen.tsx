@@ -441,7 +441,7 @@ export default function SettingsScreen() {
           className="inline-flex items-center gap-2.5 group hover:opacity-90 transition-opacity"
         >
           <Logo size={28} className="shadow-sm rounded-lg group-hover:scale-105 transition-transform" />
-          <span className="font-bold text-base text-text group-hover:text-primary transition-colors">
+          <span className="font-cinzel font-bold text-base text-text tracking-wider group-hover:text-primary transition-colors">
             Sanchay
           </span>
         </button>

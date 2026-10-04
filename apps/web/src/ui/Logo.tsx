@@ -49,3 +49,32 @@ export function Logo({
     </svg>
   )
 }
+
+export interface LogoBrandProps {
+  logoSize?: number | string
+  textSize?: string
+  className?: string
+  gradientText?: boolean
+}
+
+export function LogoBrand({
+  logoSize = 32,
+  textSize = 'text-xl',
+  className,
+  gradientText = false,
+}: LogoBrandProps) {
+  return (
+    <div className={cn('inline-flex items-center gap-2.5', className)}>
+      <Logo size={logoSize} />
+      <span
+        className={cn(
+          'font-cinzel font-bold tracking-wider',
+          textSize,
+          gradientText ? 'gradient-text' : 'text-text',
+        )}
+      >
+        Sanchay
+      </span>
+    </div>
+  )
+}

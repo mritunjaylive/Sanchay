@@ -6,6 +6,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Cinzel Brand Font (Self-hosted for Logo & Brand Typography) ── */
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/cinzel-regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url('/fonts/cinzel-bold.ttf') format('truetype');
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.03em;
+}
+
 /* ── Light Theme (default) ── */
 :root {
   /* Surfaces */

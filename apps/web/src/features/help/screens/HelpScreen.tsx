@@ -136,7 +136,7 @@ export default function HelpScreen() {
           <div className="flex justify-center mx-auto mb-2">
             <Logo size={56} className="shadow-md rounded-2xl" />
           </div>
-          <h3 className="font-bold text-lg text-text">Sanchay</h3>
+          <h3 className="font-cinzel font-bold text-2xl text-text tracking-wider">Sanchay</h3>
           <p className="text-xs text-text-muted max-w-md mx-auto">
             An offline-first, open-standard personal finance PWA designed for lightning-fast money tracking, smart budget rollover, and clean privacy.
           </p>

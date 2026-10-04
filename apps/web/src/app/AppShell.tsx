@@ -29,7 +29,7 @@ export function AppShell() {
           <div className="flex items-center gap-2.5">
             {/* Mobile: app name */}
             <Logo size={24} className="md:hidden" />
-            <span className="font-bold text-lg gradient-text md:hidden">{t('app.name')}</span>
+            <span className="font-cinzel font-bold text-lg gradient-text md:hidden tracking-wider">{t('app.name')}</span>
             {/* Desktop: page title comes from route */}
           </div>
           <div className="flex items-center gap-2">
@@ -87,7 +87,7 @@ function SidebarContent() {
       {/* Logo */}
       <div className="px-6 h-14 flex items-center gap-3 border-b border-border">
         <Logo size={28} className="shadow-sm rounded-lg" />
-        <span className="text-xl font-bold gradient-text">{t('app.name')}</span>
+        <span className="font-cinzel text-xl font-bold gradient-text tracking-wider">{t('app.name')}</span>
       </div>
 
       {/* Nav links */}

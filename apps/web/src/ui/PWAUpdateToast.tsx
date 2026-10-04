@@ -39,7 +39,9 @@ export function PWAUpdateToast() {
             <Logo size={32} className="shadow-sm rounded-lg" />
             <div>
               <p className="font-medium text-sm">Update available</p>
-              <p className="text-text-muted text-xs mt-0.5">A new version of Sanchay is ready.</p>
+              <p className="text-text-muted text-xs mt-0.5">
+                A new version of <span className="font-cinzel font-semibold tracking-wide">Sanchay</span> is ready.
+              </p>
             </div>
           </div>
           <button
