@@ -1,0 +1,106 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Production and build outputs
+dist/
+dist-ssr/
+build/
+out/
+*.local
+apps/web/dist/
+
+# Vite temporary build & timestamp files
+*.timestamp-*.mjs
+*.timestamp-*.js
+vite.config.*.timestamp*
+.vite/
+apps/web/.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables & secrets (keep .env.example tracked)
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!**/.env.example
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE & Editor settings
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Testing and coverage
+coverage/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+.playwright/
+.nyc_output/
+
+# TypeScript build info & caches
+*.tsbuildinfo
+.turbo/
+.eslintcache
+.cache/
+.rollup.cache/
+
+# Compressed archives & user database backups
+*.zip
+*.tar.gz
+*.rar
+*.7z
+Sanchay_Source_Code.zip
+*.mmbak
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+
+# Supabase local artifacts
+supabase/.temp/
+supabase/.branches/
+.supabase/
+
+# Temporary / diagnostic scripts & files
+diagnose.cjs
+apps/web/diagnose.cjs
+scratch/
+*.tmp
+*.temp

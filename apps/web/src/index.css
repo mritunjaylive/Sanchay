@@ -1,0 +1,181 @@
+/* ============================================================
+   Sanchay Design System — Global CSS Tokens & Base Styles
+   ============================================================ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Light Theme (default) ── */
+:root {
+  /* Surfaces */
+  --color-surface: 0 0% 100%;
+  --color-surface-elevated: 210 40% 98%;
+  --color-surface-overlay: 210 40% 96%;
+
+  /* Text */
+  --color-text: 222 47% 11%;
+  --color-text-muted: 215 16% 47%;
+  --color-text-subtle: 215 16% 65%;
+
+  /* Borders */
+  --color-border: 214 32% 91%;
+  --color-border-subtle: 214 32% 95%;
+
+  /* Primary (emerald green — money/growth) */
+  --color-primary: 160 84% 39%;
+  --color-primary-foreground: 0 0% 100%;
+
+  /* Semantic */
+  --color-success: 142 76% 36%;
+  --color-warning: 38 92% 50%;
+  --color-danger: 0 84% 60%;
+
+  /* Finance-specific */
+  --color-income: 142 76% 36%;
+  --color-expense: 0 84% 60%;
+
+  /* Accent options (default: emerald) */
+  --color-accent: 160 84% 39%;
+
+  /* Spacing tokens */
+  --nav-height: 64px;
+  --tab-bar-height: 64px;
+  --sidebar-width: 240px;
+  --max-content-width: 1200px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+/* ── Dark Theme (Pure Neutral Black / AMOLED) ── */
+.dark {
+  --color-surface: 0 0% 3%;
+  --color-surface-elevated: 0 0% 8%;
+  --color-surface-overlay: 0 0% 12%;
+
+  --color-text: 0 0% 98%;
+  --color-text-muted: 0 0% 64%;
+  --color-text-subtle: 0 0% 45%;
+
+  --color-border: 0 0% 16%;
+  --color-border-subtle: 0 0% 11%;
+
+  --color-primary: 160 84% 45%;
+  --color-primary-foreground: 0 0% 0%;
+
+  --color-success: 142 76% 45%;
+  --color-warning: 38 92% 55%;
+  --color-danger: 0 84% 65%;
+
+  --color-income: 142 76% 45%;
+  --color-expense: 0 84% 65%;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.6);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.7), 0 2px 4px -2px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.8), 0 4px 6px -4px rgb(0 0 0 / 0.7);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.9), 0 8px 10px -6px rgb(0 0 0 / 0.8);
+}
+
+/* ── Base Resets ── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-feature-settings: 'tnum' 1; /* tabular numbers everywhere */
+  }
+
+  body {
+    @apply bg-surface text-text font-sans antialiased;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* Visible focus rings — never remove, only enhance */
+  :focus-visible {
+    outline: 2px solid hsl(var(--color-primary));
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-subtle;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Money amounts — always tabular figures and right-aligned */
+  .money {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* Income/expense color coding */
+  .income-color {
+    color: hsl(var(--color-income));
+  }
+  .expense-color {
+    color: hsl(var(--color-expense));
+  }
+}
+
+/* ── Utility Components ── */
+@layer components {
+  /* Touch-target wrapper */
+  .touch-target {
+    @apply min-h-touch min-w-touch flex items-center justify-center;
+  }
+
+  /* Glass morphism card */
+  .glass-card {
+    @apply bg-surface-elevated/80 backdrop-blur-md border border-border/50 rounded-xl;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--color-primary)), hsl(var(--color-success)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    @apply bg-surface-overlay rounded animate-pulse;
+  }
+
+  /* Safe area bottom padding for bottom nav */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+}

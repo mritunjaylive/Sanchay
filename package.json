@@ -1,0 +1,24 @@
+{
+  "name": "sanchay",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Sanchay — offline-first personal finance PWA",
+  "scripts": {
+    "dev": "pnpm --filter @sanchay/web dev",
+    "build": "pnpm --filter @sanchay/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @sanchay/web test:e2e",
+    "analyze": "pnpm --filter @sanchay/web analyze",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md}\""
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "sharp": "^0.35.5"
+  }
+}
