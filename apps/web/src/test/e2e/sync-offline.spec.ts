@@ -11,9 +11,11 @@ test.describe('Offline Add & Multi-Context Sync (F-077, F-079)', () => {
   })
 
   test('can record transaction with zero network in offline mode', async ({ page, context }) => {
-    // Preload transactions and editor routes while online
+    // Load the list route, then reach the editor via in-app navigation so BOTH lazy route
+    // chunks are in memory before going offline. (Two page.goto() calls would reload the app,
+    // and the dev server used in E2E has no service worker to serve missing chunks offline.)
     await page.goto('/transactions')
-    await page.goto('/transactions/new?type=expense')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(page.getByRole('button', { name: /^expense$/i })).toBeVisible()
 
     // 1. Simulate turning off network (airplane mode)

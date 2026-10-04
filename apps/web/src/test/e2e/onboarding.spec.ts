@@ -24,8 +24,7 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
     await continueBtn.click()
 
     // Step 2: Account setup
-    const accInput = page.locator('input[type="text"]').first()
-    await accInput.fill('My Bank Account')
+    await page.getByLabel('Account Name').fill('My Bank Account')
 
     const step2Continue = page.getByRole('button', { name: /continue|next/i }).first()
     await step2Continue.click()
@@ -35,7 +34,8 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
     await finishBtn.click()
 
     // Redirected to home dashboard
-    await expect(page, `console errors: ${problems.join(' | ') || 'none'}`).toHaveURL(/\/$/, { timeout: 15000 })
+    await expect(page).toHaveURL(/\/$/, { timeout: 15000 })
+    expect(problems, 'unexpected console errors').toEqual([])
     await expect(page.locator('text=Sanchay').first()).toBeVisible()
   })
 })
