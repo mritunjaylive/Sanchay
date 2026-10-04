@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lock, Delete, AlertCircle } from 'lucide-react'
-import { Button } from '../../../ui'
+import { Button, Logo } from '../../../ui'
 
 export interface AppLockModalProps {
   isOpen: boolean
@@ -60,8 +60,11 @@ export function AppLockModal({ isOpen, onUnlock }: AppLockModalProps) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-surface backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-xs flex flex-col items-center text-center space-y-6">
-        <div className="w-14 h-14 bg-primary/10 text-primary rounded-2xl flex items-center justify-center shadow-md">
-          <Lock size={28} />
+        <div className="relative">
+          <Logo size={60} className="shadow-md rounded-2xl" />
+          <div className="absolute -bottom-1 -right-1 bg-surface-elevated border border-border p-1 rounded-full shadow-sm text-primary">
+            <Lock size={14} />
+          </div>
         </div>
 
         <div>

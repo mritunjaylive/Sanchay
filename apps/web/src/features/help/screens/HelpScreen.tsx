@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardHeader, CardTitle, CardContent, Button } from '../../../ui'
+import { Card, CardHeader, CardTitle, CardContent, Button, Logo } from '../../../ui'
 import { HelpCircle, Shield, FileText, Info, ChevronDown, ChevronUp } from 'lucide-react'
 
 export default function HelpScreen() {
@@ -133,8 +133,8 @@ export default function HelpScreen() {
 
       {activeTab === 'about' && (
         <Card className="p-6 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-primary text-white font-extrabold text-2xl flex items-center justify-center mx-auto shadow-md">
-            S
+          <div className="flex justify-center mx-auto mb-2">
+            <Logo size={56} className="shadow-md rounded-2xl" />
           </div>
           <h3 className="font-bold text-lg text-text">Sanchay</h3>
           <p className="text-xs text-text-muted max-w-md mx-auto">

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../stores/authStore'
-import { Button, Input } from '../../../ui'
+import { Button, Input, Logo } from '../../../ui'
 import { Mail, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react'
 
 export default function ResetPasswordScreen() {
@@ -33,6 +33,9 @@ export default function ResetPasswordScreen() {
       </Link>
 
       <div className="text-center mb-6">
+        <div className="flex justify-center mb-3">
+          <Logo size={48} className="shadow-md rounded-2xl" />
+        </div>
         <h1 className="text-2xl font-bold text-text">{t('auth.resetPasswordTitle', 'Reset Password')}</h1>
         <p className="text-sm text-text-muted mt-1">
           {t('auth.resetPasswordSubtitle', "Enter your email and we'll send you a link to reset your password.")}

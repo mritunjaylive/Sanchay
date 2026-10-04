@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { applyUpdate } from '../pwa/register'
+import { Logo } from './Logo'
 
 /**
  * PWA update toast — shown when a new service worker is waiting.
@@ -33,10 +34,13 @@ export function PWAUpdateToast() {
       className="fixed bottom-20 md:bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-50 animate-slide-up"
     >
       {showUpdate && (
-        <div className="glass-card p-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="font-medium text-sm">Update available</p>
-            <p className="text-text-muted text-xs mt-0.5">A new version of Sanchay is ready.</p>
+        <div className="glass-card p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Logo size={32} className="shadow-sm rounded-lg" />
+            <div>
+              <p className="font-medium text-sm">Update available</p>
+              <p className="text-text-muted text-xs mt-0.5">A new version of Sanchay is ready.</p>
+            </div>
           </div>
           <button
             onClick={() => void applyUpdate()}

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../stores/authStore'
-import { Button, Input, LanguageSwitcher } from '../../../ui'
+import { Button, Input, LanguageSwitcher, Logo } from '../../../ui'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 
 export default function SignInScreen() {
@@ -54,6 +54,9 @@ export default function SignInScreen() {
   return (
     <div className="w-full max-w-md mx-auto p-6 bg-surface-elevated border border-border rounded-2xl shadow-xl">
       <div className="text-center mb-6">
+        <div className="flex justify-center mb-3">
+          <Logo size={52} className="shadow-md rounded-2xl" />
+        </div>
         <h1 className="text-2xl font-bold text-text">Sanchay</h1>
         <p className="text-sm text-text-muted mt-1">{t('auth.signInSubtitle', 'Sign in to manage your finances')}</p>
         <div className="flex justify-center mt-3">

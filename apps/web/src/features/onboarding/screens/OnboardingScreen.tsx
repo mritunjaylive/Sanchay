@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../auth/stores/authStore'
-import { Button, Input, Select, Card } from '../../../ui'
+import { Button, Input, Select, Card, Logo } from '../../../ui'
 import { accountRepo } from '../../../db/repositories/accountRepo'
 import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { profileRepo } from '../../../db/repositories/profileRepo'
@@ -97,8 +97,8 @@ export default function OnboardingScreen() {
         {step === 1 && (
           <Card className="animate-in fade-in zoom-in-95 duration-200">
             <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-3">
-                <Globe size={24} />
+              <div className="flex justify-center mx-auto mb-3">
+                <Logo size={56} className="shadow-md rounded-2xl" />
               </div>
               <h2 className="text-xl font-bold text-text">{t('onboarding.welcome', 'Welcome to Sanchay')}</h2>
               <p className="text-sm text-text-muted mt-1">

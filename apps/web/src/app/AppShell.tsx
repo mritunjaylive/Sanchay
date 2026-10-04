@@ -9,7 +9,7 @@ import {
 import { SyncStatusBadge } from '../features/sync/components/SyncStatusBadge'
 import { NotificationCenter } from '../features/notifications/components/NotificationCenter'
 import { QuickAddFAB } from '../features/transactions/components/QuickAddFAB'
-import { LoadingSpinner } from '../ui/LoadingSpinner'
+import { LoadingSpinner, Logo } from '../ui'
 import { cn } from '../lib/cn'
 
 export function AppShell() {
@@ -26,8 +26,9 @@ export function AppShell() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Header */}
         <header className="flex items-center justify-between px-4 h-14 border-b border-border bg-surface-elevated shrink-0 md:px-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {/* Mobile: app name */}
+            <Logo size={24} className="md:hidden" />
             <span className="font-bold text-lg gradient-text md:hidden">{t('app.name')}</span>
             {/* Desktop: page title comes from route */}
           </div>
@@ -84,7 +85,8 @@ function SidebarContent() {
   return (
     <>
       {/* Logo */}
-      <div className="px-6 h-14 flex items-center border-b border-border">
+      <div className="px-6 h-14 flex items-center gap-3 border-b border-border">
+        <Logo size={28} className="shadow-sm rounded-lg" />
         <span className="text-xl font-bold gradient-text">{t('app.name')}</span>
       </div>
 
