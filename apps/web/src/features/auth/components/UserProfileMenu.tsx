@@ -9,8 +9,10 @@ import {
   HelpCircle,
   LogOut,
   User as UserIcon,
+  UserCheck,
 } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
+import { EditProfileModal } from './EditProfileModal'
 import { Avatar, Badge } from '../../../ui'
 import { cn } from '../../../lib/cn'
 
@@ -18,6 +20,7 @@ export function UserProfileMenu() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const user = useAuthStore((s) => s.session?.user)
@@ -55,7 +58,10 @@ export function UserProfileMenu() {
     user?.email?.split('@')[0] ||
     t('profile.defaultName', 'My Profile')
 
-  const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || null
+  const avatarUrl =
+    (user?.user_metadata?.avatar_url as string | undefined) ||
+    (user?.id ? localStorage.getItem(`sanchay_user_avatar_${user.id}`) : null) ||
+    null
 
   const handleNavigate = (path: string) => {
     setIsOpen(false)
@@ -158,6 +164,29 @@ export function UserProfileMenu() {
 
           {/* Profile-related Options */}
           <div className="p-1.5 space-y-0.5">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setIsOpen(false)
+                setIsEditProfileOpen(true)
+              }}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs',
+                'text-text hover:bg-surface-overlay transition-colors group min-h-[44px]',
+              )}
+            >
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
+                <UserCheck size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-text">{t('profile.editOption', 'Edit Profile')}</p>
+                <p className="text-[11px] text-text-muted truncate">
+                  {t('profile.editOptionSubtitle', 'Update name & photo (max 100 KB)')}
+                </p>
+              </div>
+            </button>
+
             <button
               type="button"
               role="menuitem"
@@ -266,6 +295,12 @@ export function UserProfileMenu() {
           </div>
         </div>
       )}
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </div>
   )
 }

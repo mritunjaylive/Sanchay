@@ -14,7 +14,10 @@
     "bills": "Bills",
     "goals": "Goals",
     "settings": "Settings",
-    "loans": "Loans"
+    "loans": "Loans",
+    "reportsSummary": "Summary",
+    "reportsCategories": "Categories",
+    "calendar": "Calendar"
   },
   "auth": {
     "signIn": "Sign In",
@@ -36,7 +39,8 @@
     "continueOffline": "Continue in Offline / Demo Mode",
     "useMagicLink": "Sign in with Magic Link",
     "signInSubtitle": "Sign in to manage your finances",
-    "signUpSubtitle": "Create your account to start tracking"
+    "signUpSubtitle": "Create your account to start tracking",
+    "offlineMode": "Offline Account"
   },
   "transaction": {
     "income": "Income",
@@ -115,7 +119,21 @@
     "all": "All",
     "amount": "Amount",
     "date": "Date",
-    "name": "Name"
+    "name": "Name",
+    "remove": "Remove",
+    "saveChanges": "Save Changes",
+    "saved": "Saved!"
+  },
+  "profile": {
+    "editTitle": "Edit Profile",
+    "editDesc": "Update your personal details and profile picture.",
+    "uploadPic": "Upload Profile Picture (max 100 KB)",
+    "changePhoto": "Change Photo",
+    "uploadPhoto": "Upload Photo",
+    "sizeLimitNote": "JPG, PNG, or WebP. Maximum file size: 100 KB.",
+    "fullName": "Full Name / Display Name",
+    "emailManaged": "Email is associated with your authentication account.",
+    "maxSizeExceeded": "Profile picture must be under 100 KB. Selected file is {{size}} KB."
   },
   "sync": {
     "synced": "Synced",
@@ -137,20 +155,48 @@
   },
   "settings": {
     "title": "Settings",
-    "profile": "Profile",
-    "appearance": "Appearance",
+    "subtitle": "Manage preferences, appearance, currency, and data",
+    "profile": "Account & Profile",
+    "editProfile": "Edit Profile",
+    "appearance": "Appearance & Theme",
     "currency": "Currency & locale",
     "security": "Security",
     "notifications": "Notifications",
     "data": "Data",
     "sync": "Sync",
     "about": "About",
-    "help": "Help",
+    "help": "Help & Support",
     "theme": {
       "light": "Light",
       "dark": "Dark",
       "system": "System"
-    }
+    },
+    "localization": "Language & Currency",
+    "language": "App Language",
+    "languageDesc": "Select your preferred language for the entire application",
+    "baseCurrency": "Base Currency",
+    "monthStartDay": "Month Start Day (1 to 28)",
+    "monthStartHelper": "Aligns monthly reports with your salary date (e.g. 1st or 25th)",
+    "privacy": "Privacy & Security",
+    "hideBalances": "Hide Account Balances",
+    "hideBalancesDesc": "Mask balances on screens with dots (••••••) for privacy in public",
+    "pinLock": "PIN App Lock",
+    "pinLockActive": "PIN protection active • Locks when app is minimized or hidden. Protects UI only; does not encrypt local data.",
+    "pinLockInactive": "Require a 4 to 6-digit PIN to open the app. Protects UI only; does not encrypt local data.",
+    "setPin": "Set PIN",
+    "changePin": "Change PIN",
+    "removePin": "Remove PIN",
+    "syncAndData": "Cloud Sync & Data Backup",
+    "syncStatus": "Sync Status",
+    "lastSynced": "Last synced",
+    "never": "Never",
+    "pendingChanges": "{{count}} pending local changes",
+    "syncNow": "Sync Now",
+    "exportAll": "Export All Data as JSON Backup",
+    "accountSecurity": "Account & Security",
+    "signOut": "Sign Out",
+    "signOutAll": "Sign Out Everywhere",
+    "deleteAccount": "Delete Account"
   },
   "errors": {
     "required": "This field is required",

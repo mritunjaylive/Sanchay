@@ -7,7 +7,19 @@ import { useSyncStore } from '../../sync/stores/syncStore'
 import { syncEngine } from '../../sync/services/syncEngine'
 import { profileRepo } from '../../../db/repositories/profileRepo'
 import { db } from '../../../db/db'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Badge, Modal, Logo, BrandName } from '../../../ui'
+import {
+  Card,
+  CardTitle,
+  Button,
+  Input,
+  Select,
+  Badge,
+  Modal,
+  Avatar,
+  Logo,
+  BrandName,
+} from '../../../ui'
+import { EditProfileModal } from '../../auth/components/EditProfileModal'
 import { fxService } from '../../fx/services/fxService'
 import { useAppLock } from '../../auth/hooks/useAppLock'
 import {
@@ -15,17 +27,17 @@ import {
   Sun,
   Monitor,
   Globe,
-  DollarSign,
   Shield,
   Download,
   RefreshCw,
   LogOut,
-  Trash2,
   Lock,
   Eye,
   EyeOff,
-  CheckCircle2,
   AlertTriangle,
+  User,
+  Pencil,
+  Check,
 } from 'lucide-react'
 import type { Theme } from '@sanchay/shared'
 
@@ -48,6 +60,19 @@ export default function SettingsScreen() {
     hideBalances,
     setHideBalances,
   } = useSettingsStore()
+
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
+
+  const displayName =
+    profile?.displayName ||
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email?.split('@')[0] ||
+    'User'
+
+  const avatarUrl =
+    (user?.user_metadata?.avatar_url as string | undefined) ||
+    (user?.id ? localStorage.getItem(`sanchay_user_avatar_${user.id}`) : null) ||
+    null
 
   const { hasPin, setPin, removePin } = useAppLock()
   const [isPinModalOpen, setIsPinModalOpen] = useState(false)
@@ -124,11 +149,23 @@ export default function SettingsScreen() {
     }
   }
 
-  const handleLanguageChange = (lang: string) => {
-    setLocale(lang === 'hi' ? 'hi-IN' : 'en-IN')
-    void i18n.changeLanguage(lang)
+  // Active language resolution
+  const currentLang = (i18n.resolvedLanguage || i18n.language || locale || 'en').startsWith('hi') ? 'hi' : 'en'
+
+  const handleLanguageChange = async (lang: string) => {
+    const newLocale = lang === 'hi' ? 'hi-IN' : 'en-IN'
+    setLocale(newLocale)
+    try {
+      localStorage.setItem('i18nextLng', lang)
+    } catch {
+      // ignore localStorage quota errors
+    }
+    await i18n.changeLanguage(lang)
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = lang
+    }
     if (user) {
-      void profileRepo.update(user.id, { locale: lang === 'hi' ? 'hi-IN' : 'en-IN' })
+      void profileRepo.update(user.id, { locale: newLocale })
     }
   }
 
@@ -182,7 +219,7 @@ export default function SettingsScreen() {
       try {
         await deleteAccount()
         navigate('/auth/sign-in')
-      } catch (err) {
+      } catch {
         alert('Failed to delete account. Please try again.')
       } finally {
         setIsDeleting(false)
@@ -198,6 +235,52 @@ export default function SettingsScreen() {
           {t('settings.subtitle', 'Manage preferences, appearance, currency, and data')}
         </p>
       </div>
+
+      {/* Account & Profile Card */}
+      <Card className="space-y-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <User size={18} className="text-primary" />
+            <span>{t('settings.profile', 'Account & Profile')}</span>
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Pencil size={13} />}
+            onClick={() => setIsEditProfileOpen(true)}
+          >
+            {t('settings.editProfile', 'Edit Profile')}
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-4 p-3.5 bg-surface rounded-xl border border-border">
+          <Avatar
+            src={avatarUrl}
+            name={displayName}
+            size="lg"
+            className="ring-2 ring-primary/30 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-bold text-text truncate">{displayName}</h3>
+            <p className="text-xs text-text-muted truncate mt-0.5">
+              {user?.email || t('auth.offlineMode', 'Offline Account')}
+            </p>
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <Badge variant="neutral" size="sm" className="font-mono text-[10px]">
+                {profile?.baseCurrency || baseCurrency}
+              </Badge>
+              <Badge variant="neutral" size="sm" className="text-[10px]">
+                {currentLang === 'hi' ? 'हिन्दी (Hindi)' : 'English'}
+              </Badge>
+              {hasPin && (
+                <Badge variant="success" size="sm" className="text-[10px]">
+                  PIN Locked
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Appearance */}
       <Card className="space-y-4">
@@ -219,7 +302,7 @@ export default function SettingsScreen() {
               }`}
             >
               {thm === 'light' ? <Sun size={18} /> : thm === 'dark' ? <Moon size={18} /> : <Monitor size={18} />}
-              <span className="capitalize">{thm}</span>
+              <span className="capitalize">{t(`settings.theme.${thm}`, thm)}</span>
             </button>
           ))}
         </div>
@@ -232,10 +315,58 @@ export default function SettingsScreen() {
           <span>{t('settings.localization', 'Language & Currency')}</span>
         </CardTitle>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* 1-Tap Language Selection Buttons */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-text">
+              {t('settings.language', 'App Language')}
+            </label>
+            <span className="text-[11px] text-text-muted">
+              {currentLang === 'hi' ? 'हिन्दी सक्रिय है' : 'English active'}
+            </span>
+          </div>
+          <p className="text-xs text-text-muted">
+            {t('settings.languageDesc', 'Select your preferred language for the entire application')}
+          </p>
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => handleLanguageChange('en')}
+              className={`p-3 rounded-xl border flex items-center justify-between gap-2 font-medium text-xs transition-all ${
+                currentLang === 'en'
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm font-semibold'
+                  : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base" role="img" aria-label="UK flag">🇬🇧</span>
+                <span>English</span>
+              </div>
+              {currentLang === 'en' && <Check size={16} className="text-primary shrink-0" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleLanguageChange('hi')}
+              className={`p-3 rounded-xl border flex items-center justify-between gap-2 font-medium text-xs transition-all ${
+                currentLang === 'hi'
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm font-semibold'
+                  : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base" role="img" aria-label="India flag">🇮🇳</span>
+                <span className="font-hindi text-sm">हिन्दी (Hindi)</span>
+              </div>
+              {currentLang === 'hi' && <Check size={16} className="text-primary shrink-0" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
           <Select
             label={t('settings.language', 'Language')}
-            value={locale.startsWith('hi') ? 'hi' : 'en'}
+            value={currentLang}
             onChange={(e) => handleLanguageChange(e.target.value)}
             options={[
               { value: 'en', label: 'English' },
@@ -268,7 +399,7 @@ export default function SettingsScreen() {
           label={t('settings.monthStartDay', 'Month Start Day (1 to 28)')}
           value={monthStartDay}
           onChange={(e) => handleMonthStartChange(e.target.value)}
-          helperText="Aligns monthly reports with your salary date (e.g. 1st or 25th)"
+          helperText={t('settings.monthStartHelper', 'Aligns monthly reports with your salary date (e.g. 1st or 25th)')}
         />
       </Card>
 
@@ -276,14 +407,16 @@ export default function SettingsScreen() {
       <Card className="space-y-4">
         <CardTitle className="text-base flex items-center gap-2">
           <Shield size={18} className="text-primary" />
-          <span>{t('settings.privacy', 'Privacy')}</span>
+          <span>{t('settings.privacy', 'Privacy & Security')}</span>
         </CardTitle>
 
         <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border">
           <div>
-            <span className="text-sm font-semibold text-text block">Hide Account Balances</span>
+            <span className="text-sm font-semibold text-text block">
+              {t('settings.hideBalances', 'Hide Account Balances')}
+            </span>
             <span className="text-xs text-text-muted">
-              Mask balances on screens with dots (••••••) for privacy in public
+              {t('settings.hideBalancesDesc', 'Mask balances on screens with dots (••••••) for privacy in public')}
             </span>
           </div>
           <Button
@@ -297,11 +430,13 @@ export default function SettingsScreen() {
 
         <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border">
           <div>
-            <span className="text-sm font-semibold text-text block">PIN App Lock</span>
+            <span className="text-sm font-semibold text-text block">
+              {t('settings.pinLock', 'PIN App Lock')}
+            </span>
             <span className="text-xs text-text-muted">
               {hasPin
-                ? 'PIN protection active • Locks when app is minimized or hidden. Protects UI only; does not encrypt local data.'
-                : 'Require a 4 to 6-digit PIN to open the app. Protects UI only; does not encrypt local data.'}
+                ? t('settings.pinLockActive', 'PIN protection active • Locks when app is minimized or hidden.')
+                : t('settings.pinLockInactive', 'Require a 4 to 6-digit PIN to open the app.')}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -317,14 +452,14 @@ export default function SettingsScreen() {
                     setIsPinModalOpen(true)
                   }}
                 >
-                  Change PIN
+                  {t('settings.changePin', 'Change PIN')}
                 </Button>
                 <Button
                   variant="danger"
                   size="sm"
                   onClick={handleRemovePin}
                 >
-                  Remove
+                  {t('settings.removePin', 'Remove')}
                 </Button>
               </>
             ) : (
@@ -339,7 +474,7 @@ export default function SettingsScreen() {
                   setIsPinModalOpen(true)
                 }}
               >
-                Set PIN
+                {t('settings.setPin', 'Set PIN')}
               </Button>
             )}
           </div>
@@ -356,14 +491,14 @@ export default function SettingsScreen() {
         <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border text-xs">
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-text">Sync Status:</span>
+              <span className="font-semibold text-text">{t('settings.syncStatus', 'Sync Status')}:</span>
               <Badge variant={syncStatus === 'synced' ? 'success' : syncStatus === 'error' ? 'danger' : 'neutral'}>
                 {syncStatus}
               </Badge>
             </div>
             <p className="text-text-muted mt-1">
-              Last synced: {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : 'Never'}
-              {pendingCount > 0 ? ` • ${pendingCount} pending local changes` : ''}
+              {t('settings.lastSynced', 'Last synced')}: {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : t('settings.never', 'Never')}
+              {pendingCount > 0 ? ` • ${t('settings.pendingChanges', { count: pendingCount, defaultValue: `${pendingCount} pending local changes` })}` : ''}
             </p>
           </div>
 
@@ -373,7 +508,7 @@ export default function SettingsScreen() {
             leftIcon={<RefreshCw size={14} />}
             onClick={handleManualSync}
           >
-            Sync Now
+            {t('settings.syncNow', 'Sync Now')}
           </Button>
         </div>
 
@@ -385,7 +520,7 @@ export default function SettingsScreen() {
             isLoading={isExporting}
             onClick={handleFullExport}
           >
-            Export All Data as JSON Backup
+            {t('settings.exportAll', 'Export All Data as JSON Backup')}
           </Button>
         </div>
       </Card>
@@ -394,7 +529,7 @@ export default function SettingsScreen() {
       <Card className="space-y-4 border-danger/30">
         <CardTitle className="text-base text-danger flex items-center gap-2">
           <LogOut size={18} />
-          <span>Account & Security</span>
+          <span>{t('settings.accountSecurity', 'Account & Security')}</span>
         </CardTitle>
 
         <div className="flex flex-col sm:flex-row gap-3">
@@ -406,7 +541,7 @@ export default function SettingsScreen() {
               navigate('/auth/sign-in')
             }}
           >
-            Sign Out
+            {t('settings.signOut', 'Sign Out')}
           </Button>
 
           <Button
@@ -419,7 +554,7 @@ export default function SettingsScreen() {
               }
             }}
           >
-            Sign Out Everywhere
+            {t('settings.signOutAll', 'Sign Out Everywhere')}
           </Button>
 
           <Button
@@ -428,7 +563,7 @@ export default function SettingsScreen() {
             isLoading={isDeleting}
             onClick={handleDeleteAccount}
           >
-            Delete Account
+            {t('settings.deleteAccount', 'Delete Account')}
           </Button>
         </div>
       </Card>
@@ -447,6 +582,12 @@ export default function SettingsScreen() {
           Version 1.0.0 • 100% Offline-First Personal Finance
         </p>
       </div>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
 
       {/* Base Currency Change Modal (Spec 8.6) */}
       <Modal
@@ -583,4 +724,3 @@ export default function SettingsScreen() {
     </div>
   )
 }
-

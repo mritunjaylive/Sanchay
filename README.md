@@ -7,7 +7,7 @@
 
 ## Overview
 
-**Sanchay** (from Sanskrit *संचय* — meaning accumulation or saving) is a modern, privacy-first Progressive Web Application (PWA) designed for managing personal finances seamlessly across mobile and desktop. 
+**Sanchay** (from Sanskrit *संचय* - meaning accumulation or saving) is a modern, privacy-first Progressive Web Application (PWA) designed for managing personal finances seamlessly across mobile and desktop. 
 
 Unlike traditional financial applications that require constant internet connectivity and store sensitive details directly on remote servers, Sanchay is **offline-first**: all reads and writes operate instantly against a local, versioned browser database (IndexedDB via Dexie). Background synchronization automatically pushes and pulls changes with Supabase when online using a transactional outbox and conflict-free sequence-based protocol.
 

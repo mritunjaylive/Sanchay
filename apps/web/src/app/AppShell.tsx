@@ -104,22 +104,17 @@ function SidebarContent() {
 
         <div className="pt-2 pb-1">
           <span className="px-3 text-xs font-semibold text-text-subtle uppercase tracking-wider">
-            Reports
+            {t('nav.reports', 'Reports')}
           </span>
         </div>
-        <SidebarLink to="/reports/summary" icon={<BarChart2 size={18} />} label="Summary" />
-        <SidebarLink to="/reports/categories" icon={<CreditCard size={18} />} label="Categories" />
-        <SidebarLink to="/calendar" icon={<Calendar size={18} />} label="Calendar" />
+        <SidebarLink to="/reports/summary" icon={<BarChart2 size={18} />} label={t('nav.reportsSummary', 'Summary')} />
+        <SidebarLink to="/reports/categories" icon={<CreditCard size={18} />} label={t('nav.reportsCategories', 'Categories')} />
+        <SidebarLink to="/calendar" icon={<Calendar size={18} />} label={t('nav.calendar', 'Calendar')} />
 
         <div className="pt-2">
-          <SidebarLink to="/settings" icon={<Settings size={18} />} label={t('nav.settings')} />
+          <SidebarLink to="/settings" icon={<Settings size={18} />} label={t('nav.settings', 'Settings')} />
         </div>
       </nav>
-
-      {/* Sync status */}
-      <div className="p-4 border-t border-border">
-        <SyncStatusBadge />
-      </div>
     </>
   )
 }

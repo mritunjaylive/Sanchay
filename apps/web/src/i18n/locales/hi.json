@@ -14,7 +14,10 @@
     "bills": "बिल",
     "goals": "लक्ष्य",
     "settings": "सेटिंग",
-    "loans": "ऋण"
+    "loans": "ऋण",
+    "reportsSummary": "सारांश",
+    "reportsCategories": "श्रेणियां",
+    "calendar": "कैलेंडर"
   },
   "auth": {
     "signIn": "साइन इन करें",
@@ -36,15 +39,19 @@
     "continueOffline": "ऑफ़लाइन / डेमो मोड में जारी रखें",
     "useMagicLink": "मैजिक लिंक से साइन इन करें",
     "signInSubtitle": "अपने वित्त प्रबंधन के लिए साइन इन करें",
-    "signUpSubtitle": "ट्रैकिंग शुरू करने के लिए अपना खाता बनाएं"
+    "signUpSubtitle": "ट्रैकिंग शुरू करने के लिए अपना खाता बनाएं",
+    "offlineMode": "ऑफ़लाइन खाता"
   },
-  "settings": {
-    "title": "सेटिंग्स",
-    "theme": "थीम",
-    "language": "भाषा",
-    "baseCurrency": "आधार मुद्रा",
-    "privacy": "गोपनीयता और ऐप लॉक",
-    "syncAndData": "क्लाउड समन्वय और डेटा बैकअप"
+  "profile": {
+    "editTitle": "प्रोफ़ाइल संपादित करें",
+    "editDesc": "अपना व्यक्तिगत विवरण और प्रोफ़ाइल फ़ोटो अपडेट करें।",
+    "uploadPic": "प्रोफ़ाइल फ़ोटो अपलोड करें (अधिकतम 100 KB)",
+    "changePhoto": "फ़ोटो बदलें",
+    "uploadPhoto": "फ़ोटो अपलोड करें",
+    "sizeLimitNote": "JPG, PNG, या WebP। अधिकतम फ़ाइल आकार: 100 KB।",
+    "fullName": "पूरा नाम / उपनाम",
+    "emailManaged": "ईमेल आपके प्रमाणीकरण खाते से संबद्ध है।",
+    "maxSizeExceeded": "प्रोफ़ाइल फ़ोटो 100 KB से कम होनी चाहिए। चुनी गई फ़ाइल {{size}} KB है।"
   },
   "transaction": {
     "income": "आय",
@@ -72,6 +79,34 @@
     "undo": "पूर्ववत करें",
     "duplicate": "डुप्लीकेट"
   },
+  "account": {
+    "kinds": {
+      "cash": "नकद (कैश)",
+      "bank": "बैंक खाता",
+      "wallet": "डिजिटल वॉलेट",
+      "savings": "बचत खाता",
+      "investment": "निवेश",
+      "other_asset": "अन्य संपत्ति",
+      "credit_card": "क्रेडिट कार्ड",
+      "loan": "ऋण (लोन)",
+      "other_liability": "अन्य देनदारी"
+    },
+    "openingBalance": "प्रारंभिक शेष",
+    "currency": "मुद्रा",
+    "archive": "खाता संग्रहीत करें",
+    "reconcile": "समाधान करें",
+    "excludeFromNetWorth": "कुल संपत्ति से अलग रखें"
+  },
+  "budget": {
+    "monthly": "मासिक बजट",
+    "overall": "कुल मिलाकर",
+    "remaining": "शेष",
+    "spent": "खर्च किया गया",
+    "remaining_per_day": "{{amount}} / दिन शेष",
+    "over": "बजट से अधिक",
+    "rollover": "अप्रयुक्त रोलओवर करें",
+    "alert_threshold": "{{pct}}% पर अलर्ट करें"
+  },
   "common": {
     "save": "सहेजें",
     "cancel": "रद्द करें",
@@ -95,17 +130,73 @@
     "all": "सभी",
     "amount": "राशि",
     "date": "तारीख",
-    "name": "नाम"
+    "name": "नाम",
+    "remove": "हटाएं",
+    "saveChanges": "परिवर्तन सहेजें",
+    "saved": "सहेजा गया!"
   },
   "sync": {
     "synced": "समन्वयित",
     "syncing": "समन्वयित हो रहा है…",
     "pending": "{{count}} लंबित",
-    "offline": "ऑफलाइन",
+    "offline": "ऑफ़लाइन",
     "error": "समन्वय त्रुटि (पुनः प्रयास)",
     "authRequired": "साइन इन आवश्यक",
     "syncNow": "अभी समन्वय करें",
     "lastSync": "{{time}} को समन्वयित"
+  },
+  "onboarding": {
+    "welcome": "संचय में आपका स्वागत है",
+    "step_language": "भाषा चुनें",
+    "step_currency": "आधार मुद्रा",
+    "step_account": "पहला खाता",
+    "step_categories": "डिफ़ॉल्ट श्रेणियां",
+    "step_done": "सब तैयार है!"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "subtitle": "प्राथमिकताएं, रंग-रूप, मुद्रा और डेटा प्रबंधित करें",
+    "profile": "खाता और प्रोफ़ाइल",
+    "editProfile": "प्रोफ़ाइल संपादित करें",
+    "appearance": "दिखावट और थीम",
+    "currency": "मुद्रा और स्थानीयकरण",
+    "security": "सुरक्षा",
+    "notifications": "सूचनाएं",
+    "data": "डेटा",
+    "sync": "क्लाउड समन्वय",
+    "about": "के बारे में",
+    "help": "सहायता और अक्सर पूछे जाने वाले प्रश्न",
+    "theme": {
+      "light": "लाइट",
+      "dark": "डार्क",
+      "system": "सिस्टम"
+    },
+    "localization": "भाषा और मुद्रा",
+    "language": "ऐप की भाषा",
+    "languageDesc": "संपूर्ण ऐप के लिए अपनी पसंदीदा भाषा चुनें",
+    "baseCurrency": "आधार मुद्रा",
+    "monthStartDay": "महीने का प्रारंभ दिवस (1 से 28)",
+    "monthStartHelper": "मासिक रिपोर्ट को आपके वेतन दिवस के अनुसार सेट करता है (उदा. 1 या 25)",
+    "privacy": "गोपनीयता और सुरक्षा",
+    "hideBalances": "खाता शेष छुपाएं",
+    "hideBalancesDesc": "सार्वजनिक स्थानों पर गोपनीयता के लिए स्क्रीन पर शेष राशि को (••••••) से छुपाएं",
+    "pinLock": "पिन ऐप लॉक",
+    "pinLockActive": "पिन सुरक्षा सक्रिय • ऐप छोटा या छुपाए जाने पर लॉक होता है।",
+    "pinLockInactive": "ऐप खोलने के लिए 4 से 6 अंकों का पिन आवश्यक करें।",
+    "setPin": "पिन सेट करें",
+    "changePin": "पिन बदलें",
+    "removePin": "पिन हटाएं",
+    "syncAndData": "क्लाउड समन्वय और डेटा बैकअप",
+    "syncStatus": "समन्वय स्थिति",
+    "lastSynced": "अंतिम समन्वय",
+    "never": "कभी नहीं",
+    "pendingChanges": "{{count}} स्थानीय परिवर्तन लंबित",
+    "syncNow": "अभी समन्वय करें",
+    "exportAll": "सभी डेटा JSON बैकअप के रूप में डाउनलोड करें",
+    "accountSecurity": "खाता और सुरक्षा",
+    "signOut": "साइन आउट करें",
+    "signOutAll": "सभी डिवाइस से साइन आउट करें",
+    "deleteAccount": "खाता हटाएं"
   },
   "errors": {
     "required": "यह फ़ील्ड आवश्यक है",

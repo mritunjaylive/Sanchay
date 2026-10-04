@@ -2,6 +2,13 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import en from './locales/en.json'
+import hi from './locales/hi.json'
+
+const updateHtmlLang = (lng: string) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lng.startsWith('hi') ? 'hi' : 'en'
+  }
+}
 
 void i18n
   .use(LanguageDetector)
@@ -12,6 +19,7 @@ void i18n
     defaultNS: 'translation',
     resources: {
       en: { translation: en },
+      hi: { translation: hi },
     },
     interpolation: {
       escapeValue: false, // React handles XSS
@@ -19,27 +27,16 @@ void i18n
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng',
     },
   })
 
-// Lazy-load non-English locales when active or switched to
-const updateHtmlLang = (lng: string) => {
-  if (typeof document !== 'undefined') {
-    document.documentElement.lang = lng.startsWith('hi') ? 'hi' : 'en'
-  }
-}
+// Set initial document language
+updateHtmlLang(i18n.resolvedLanguage || i18n.language || 'en')
 
-const loadLocaleIfNeeded = async (lng: string) => {
-  updateHtmlLang(lng)
-  if (lng.startsWith('hi') && !i18n.hasResourceBundle('hi', 'translation')) {
-    const hi = await import('./locales/hi.json')
-    i18n.addResourceBundle('hi', 'translation', hi.default, true, true)
-  }
-}
-
-void loadLocaleIfNeeded(i18n.language)
+// Listen to language change events
 i18n.on('languageChanged', (lng) => {
-  void loadLocaleIfNeeded(lng)
+  updateHtmlLang(lng)
 })
 
 export default i18n

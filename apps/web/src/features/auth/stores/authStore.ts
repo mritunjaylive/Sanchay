@@ -29,6 +29,7 @@ interface AuthState {
   deleteAccount: () => Promise<{ error: string | null }>
   resetPassword: (email: string) => Promise<{ error: string | null }>
   setProfile: (profile: Profile) => void
+  updateUserProfile: (displayName: string, avatarUrl?: string | null) => Promise<{ error: string | null }>
   clearError: () => void
 }
 
@@ -246,6 +247,61 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setProfile: (profile) => {
     set({ profile })
+  },
+
+  updateUserProfile: async (displayName, avatarUrl) => {
+    try {
+      const { session } = get()
+      const userId = session?.user?.id
+      if (!userId) return { error: 'Not authenticated' }
+
+      // 1. Update local IndexedDB profile
+      const updatedProfile = await profileRepo.update(userId, { displayName })
+
+      // 2. Cache avatar locally
+      if (avatarUrl !== undefined) {
+        if (avatarUrl) {
+          localStorage.setItem(`sanchay_user_avatar_${userId}`, avatarUrl)
+        } else {
+          localStorage.removeItem(`sanchay_user_avatar_${userId}`)
+        }
+      }
+
+      // 3. Update Supabase Auth user metadata if available
+      try {
+        const supabase = await getSupabase()
+        const metaUpdate: Record<string, unknown> = { full_name: displayName }
+        if (avatarUrl !== undefined) {
+          metaUpdate['avatar_url'] = avatarUrl
+        }
+        await supabase.auth.updateUser({ data: metaUpdate })
+      } catch {
+        // Ignore Supabase connection / offline failures
+      }
+
+      // 4. Update in-memory session and profile
+      if (session?.user) {
+        const updatedUser = {
+          ...session.user,
+          user_metadata: {
+            ...session.user.user_metadata,
+            full_name: displayName,
+            ...(avatarUrl !== undefined ? { avatar_url: avatarUrl } : {}),
+          },
+        }
+        set({
+          profile: updatedProfile,
+          session: { ...session, user: updatedUser },
+        })
+      } else {
+        set({ profile: updatedProfile })
+      }
+
+      return { error: null }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update profile'
+      return { error: msg }
+    }
   },
 
   // Expose for RequireAuth check

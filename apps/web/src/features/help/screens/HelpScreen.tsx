@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardHeader, CardTitle, CardContent, Button, Logo, BrandName } from '../../../ui'
-import { HelpCircle, Shield, FileText, Info, ChevronDown, ChevronUp } from 'lucide-react'
+import { Card, CardHeader, CardTitle, CardContent, Button, Logo, BrandName, Avatar } from '../../../ui'
+import { HelpCircle, Shield, FileText, Info, ChevronDown, ChevronUp, Github, Globe, Mail } from 'lucide-react'
 
 export default function HelpScreen() {
   const { t } = useTranslation()
@@ -144,6 +144,50 @@ export default function HelpScreen() {
           </p>
           <div className="pt-4 text-[11px] text-text-muted border-t border-border/50">
             Version 1.0.0 • Built with React, TypeScript, Dexie & Supabase
+          </div>
+
+          {/* Developer & Creator Details */}
+          <div className="pt-6 border-t border-border text-left">
+            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
+              Developer & Creator
+            </h4>
+            <div className="p-4 rounded-2xl bg-surface border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Avatar name="Mritunjay Pandey" size="md" className="ring-2 ring-primary/40" />
+                <div>
+                  <h5 className="font-bold text-base text-text">Mritunjay Pandey</h5>
+                  <p className="text-xs text-text-muted">Creator of Sanchay</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <a
+                  href="https://github.com/mritunjaylive"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-overlay border border-border text-text font-medium transition-colors"
+                >
+                  <Github size={14} className="text-primary" />
+                  <span>@mritunjaylive</span>
+                </a>
+                <a
+                  href="https://mritunjaylive.in"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-overlay border border-border text-text font-medium transition-colors"
+                >
+                  <Globe size={14} className="text-primary" />
+                  <span>mritunjaylive.in</span>
+                </a>
+                <a
+                  href="mailto:mritunjay@mritunjaylive.in"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-overlay border border-border text-text font-medium transition-colors"
+                >
+                  <Mail size={14} className="text-primary" />
+                  <span>mritunjay@mritunjaylive.in</span>
+                </a>
+              </div>
+            </div>
           </div>
         </Card>
       )}
