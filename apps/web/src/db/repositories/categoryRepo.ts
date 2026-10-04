@@ -57,7 +57,9 @@ export const categoryRepo = {
   async delete(id: string, reassignToCategoryId?: string): Promise<void> {
     if (reassignToCategoryId) {
       // Reassign transactions
-      const txs = await db.transactions.where('categoryId').equals(id).toArray()
+      const txs = await db.transactions
+        .filter((tx) => !tx.deletedAt && tx.categoryId === id)
+        .toArray()
       for (const tx of txs) {
         if (!tx.deletedAt) {
           const now = new Date().toISOString()

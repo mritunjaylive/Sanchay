@@ -24,17 +24,17 @@ export default function AccountDetailScreen() {
 
   const account = useLiveQuery(() => (id ? db.accounts.get(id) : undefined), [id])
   const transactions = useLiveQuery(
-    () =>
-      id
-        ? db.transactions
-            .where('accountId')
-            .equals(id)
-            .or('toAccountId')
-            .equals(id)
-            .filter((tx) => !tx.deletedAt)
-            .reverse()
-            .sortBy('occurredOn')
-        : [],
+    async () => {
+      if (!id) return []
+      const list = await db.transactions
+        .filter((tx) => !tx.deletedAt && (tx.accountId === id || tx.toAccountId === id))
+        .toArray()
+      return list.sort((a, b) => {
+        const dateCmp = b.occurredOn.localeCompare(a.occurredOn)
+        if (dateCmp !== 0) return dateCmp
+        return (b.occurredTime ?? '').localeCompare(a.occurredTime ?? '') || b.createdAt.localeCompare(a.createdAt)
+      })
+    },
     [id],
   )
 
