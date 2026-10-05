@@ -12,9 +12,30 @@ import { suggestPayees, suggestCategoryForPayee } from '../../../domain/suggesti
 import { checkBudgetThreshold, getEffectiveBudget } from '../../../domain/budgets'
 import { periodFor } from '../../../domain/dates'
 import { fxService } from '../../fx/services/fxService'
-import { Button, Input, Select, Card, Keypad, Badge } from '../../../ui'
-import { ArrowLeft, Trash2, Copy, AlertTriangle, Calculator, Sparkles, RefreshCw } from 'lucide-react'
-import type { TransactionType } from '@sanchay/shared'
+import {
+  Page,
+  PageHeader,
+  Button,
+  Input,
+  Select,
+  Card,
+  Keypad,
+  SegmentedControl,
+  CategoryIcon,
+} from '../../../ui'
+import {
+  Trash2,
+  Copy,
+  AlertTriangle,
+  Calculator,
+  Sparkles,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
+import type { TransactionType, Category, Account } from '@sanchay/shared'
+import { cn } from '../../../lib/cn'
 
 export default function TransactionEditorScreen() {
   const { id } = useParams<{ id: string }>()
@@ -27,7 +48,6 @@ export default function TransactionEditorScreen() {
   const monthStartDay = useAuthStore((s) => s.profile?.monthStartDay) ?? 1
 
   // Form fields
-  // Honour ?type=expense|income|transfer|adjustment (used by PWA shortcuts and deep links)
   const [type, setType] = useState<TransactionType>(() => {
     const q = searchParams.get('type')
     return q === 'income' || q === 'transfer' || q === 'adjustment' ? q : 'expense'
@@ -42,8 +62,16 @@ export default function TransactionEditorScreen() {
   const [payee, setPayee] = useState('')
   const [note, setNote] = useState('')
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [showKeypad, setShowKeypad] = useState(false)
+  const [showKeypad, setShowKeypad] = useState(true)
+  const [isNoteExpanded, setIsNoteExpanded] = useState(false)
   const [budgetWarning, setBudgetWarning] = useState<string | null>(null)
+
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), [])
+  const yesterdayStr = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().substring(0, 10)
+  }, [])
 
   // DB queries
   const existingTx = useLiveQuery(() => (isEditing && id ? db.transactions.get(id) : undefined), [
@@ -72,6 +100,7 @@ export default function TransactionEditorScreen() {
       setOccurredOn(existingTx.occurredOn)
       setPayee(existingTx.payee ?? '')
       setNote(existingTx.note ?? '')
+      if (existingTx.note) setIsNoteExpanded(true)
     }
   }, [existingTx])
 
@@ -277,7 +306,7 @@ export default function TransactionEditorScreen() {
   const relevantCategories = useMemo(() => {
     if (!categories) return []
     const seen = new Set<string>()
-    const list: typeof categories = []
+    const list: Category[] = []
     for (const c of categories) {
       if (user?.id && c.userId && c.userId !== user.id) continue
       if (type === 'expense' && c.kind !== 'expense') continue
@@ -291,270 +320,381 @@ export default function TransactionEditorScreen() {
     return list
   }, [categories, type, user?.id])
 
+  const activeAccount = accounts?.find((a) => a.id === accountId)
+  const currencySymbol = activeAccount?.currency ?? baseCurrency
+
   return (
-    <div className="space-y-5 pb-20 md:pb-8 max-w-xl mx-auto">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text font-medium"
-        >
-          <ArrowLeft size={16} />
-          <span>{t('common.cancel', 'Cancel')}</span>
-        </button>
-
-        {isEditing && (
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={handleDuplicate} title="Duplicate">
-              <Copy size={16} />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleDelete} title="Delete">
-              <Trash2 size={16} className="text-danger" />
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Transaction Type Tabs */}
-      <div className="grid grid-cols-4 gap-1 p-1 bg-surface-elevated border border-border rounded-xl">
-        {(['expense', 'income', 'transfer', 'adjustment'] as TransactionType[]).map((tType) => (
-          <button
-            key={tType}
-            type="button"
-            onClick={() => setType(tType)}
-            className={`min-h-[40px] text-xs font-semibold rounded-lg capitalize transition-all ${
-              type === tType
-                ? tType === 'expense'
-                  ? 'bg-danger text-white shadow-xs'
-                  : tType === 'income'
-                  ? 'bg-success text-white shadow-xs'
-                  : 'bg-primary text-white shadow-xs'
-                : 'text-text-muted hover:text-text'
-            }`}
-          >
-            {t(`transactions.${tType}`, tType)}
-          </button>
-        ))}
-      </div>
-
-      {/* Amount Display & Keypad Toggle */}
-      <Card className="p-4 bg-gradient-to-br from-surface-elevated to-surface-overlay/20">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-            {t('transactions.amount', 'Amount')}
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowKeypad(!showKeypad)}
-            className="flex items-center gap-1 text-xs text-primary font-medium hover:underline"
-          >
-            <Calculator size={14} />
-            <span>{showKeypad ? t('common.hideKeypad', 'Hide Keypad') : t('common.calculator', 'Keypad')}</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-2xl font-bold text-text-muted">{baseCurrency}</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amountExpr}
-            onChange={(e) => setAmountExpr(e.target.value)}
-            className="w-full text-3xl font-extrabold text-text bg-transparent border-none outline-none tracking-tight"
-            placeholder="0"
-          />
-        </div>
-
-        {/* Budget Warning Banner (Spec F-039) */}
-        {budgetWarning && (
-          <div className="mt-3 p-2.5 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2 text-warning text-xs font-semibold animate-in fade-in">
-            <AlertTriangle size={16} className="shrink-0" />
-            <span>{budgetWarning}</span>
-          </div>
-        )}
-
-        {/* Interactive Keypad */}
-        {showKeypad && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <Keypad
-              value={amountExpr}
-              onChange={setAmountExpr}
-              onConfirm={() => setShowKeypad(false)}
-            />
-          </div>
-        )}
-      </Card>
-
-      {/* Main Form Fields */}
-      <Card className="p-5 space-y-4">
-        {/* Accounts Selection */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Select
-            label={type === 'transfer' ? t('transactions.fromAccount', 'From Account') : t('accounts.account', 'Account')}
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            required
-            options={accounts?.map((a) => ({ value: a.id, label: a.name })) ?? []}
-          />
-
-          {type === 'transfer' && (
-            <Select
-              label={t('transactions.toAccount', 'To Account')}
-              value={toAccountId}
-              onChange={(e) => setToAccountId(e.target.value)}
-              required
-              options={
-                accounts
-                  ?.filter((a) => a.id !== accountId)
-                  .map((a) => ({ value: a.id, label: a.name })) ?? []
-              }
-            />
-          )}
-        </div>
-
-        {/* Cross-Currency Transfer: Destination Amount */}
-        {type === 'transfer' &&
-          toAccountId &&
-          accounts?.find((a) => a.id === toAccountId)?.currency !==
-            accounts?.find((a) => a.id === accountId)?.currency && (
-            <Input
-              type="text"
-              inputMode="decimal"
-              label={`Destination Amount (${accounts?.find((a) => a.id === toAccountId)?.currency})`}
-              placeholder="Leave blank to auto-calculate with exchange rate"
-              value={toAmountExpr}
-              onChange={(e) => setToAmountExpr(e.target.value)}
-            />
-          )}
-
-        {/* Foreign Currency: Manual FX Rate Override */}
-        {accounts?.find((a) => a.id === accountId)?.currency &&
-          accounts?.find((a) => a.id === accountId)?.currency !== baseCurrency && (
-            <Input
-              type="text"
-              inputMode="decimal"
-              label={`Exchange Rate (1 ${accounts?.find((a) => a.id === accountId)?.currency} = X ${baseCurrency})`}
-              placeholder="1.0"
-              value={customFxRate}
-              onChange={(e) => setCustomFxRate(e.target.value)}
-              helperText="Auto-computed from cached rates. You can manually adjust this rate."
-            />
-          )}
-
-        {/* Category Picker (for income/expense) */}
-        {(type === 'expense' || type === 'income') && (
-          <Select
-            label={t('categories.category', 'Category')}
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            options={[
-              { value: '', label: t('common.selectCategory', '-- Select Category --') },
-              ...relevantCategories.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          />
-        )}
-
-        {/* Date */}
-        <Input
-          type="date"
-          label={t('common.date', 'Date')}
-          value={occurredOn}
-          onChange={(e) => setOccurredOn(e.target.value)}
-          required
-        />
-
-        {/* Payee with Autocomplete Suggestions */}
-        <div className="space-y-1.5">
-          <Input
-            label={type === 'income' ? t('transactions.payer', 'Payer / Source') : t('transactions.payee', 'Payee / Merchant')}
-            placeholder="e.g. Swiggy, Amazon, Salary"
-            value={payee}
-            onChange={(e) => handlePayeeChange(e.target.value)}
-          />
-          {payeeSuggestions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] text-text-muted flex items-center gap-1">
-                <Sparkles size={12} /> {t('common.suggested', 'Suggested:')}
-              </span>
-              {payeeSuggestions.map((sug) => (
-                <button
-                  key={sug}
-                  type="button"
-                  onClick={() => handlePayeeChange(sug)}
-                  className="text-xs px-2 py-0.5 rounded-full bg-surface-overlay text-text hover:bg-primary/20 hover:text-primary transition-colors font-medium"
-                >
-                  {sug}
-                </button>
-              ))}
+    <Page width="narrow" className="max-w-3xl space-y-6 pb-28">
+      {/* Header */}
+      <PageHeader
+        title={isEditing ? t('nav.editTransaction', 'Edit Transaction') : t('nav.newTransaction', 'New Transaction')}
+        backTo="/transactions"
+        actions={
+          isEditing ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDuplicate}
+                title={t('transaction.duplicate', 'Duplicate')}
+              >
+                <Copy size={16} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                title={t('transaction.delete', 'Delete')}
+              >
+                <Trash2 size={16} className="text-danger" />
+              </Button>
             </div>
-          )}
+          ) : undefined
+        }
+      />
+
+      {/* Main Grid: Left = Amount & Type & Keypad; Right = Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column (Amount, Type, Keypad) */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* Transaction Type SegmentedControl */}
+          <SegmentedControl
+            options={[
+              { value: 'expense', label: t('transaction.expense', 'Expense') },
+              { value: 'income', label: t('transaction.income', 'Income') },
+              { value: 'transfer', label: t('transaction.transfer', 'Transfer') },
+            ]}
+            value={type}
+            onChange={(val) => setType(val as TransactionType)}
+          />
+
+          {/* Hero Amount Display Card */}
+          <Card
+            variant="hero"
+            className="p-5 sm:p-6 text-center space-y-2 relative overflow-hidden"
+          >
+            <div className="flex items-center justify-between text-xs font-semibold text-text-muted">
+              <span>{t('transaction.amount', 'Amount')}</span>
+              <button
+                type="button"
+                onClick={() => setShowKeypad(!showKeypad)}
+                className="flex items-center gap-1 text-primary hover:underline font-medium"
+              >
+                <Calculator size={14} />
+                <span>{showKeypad ? 'Hide Keypad' : 'Show Keypad'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 py-2">
+              <span className="text-2xl sm:text-3xl font-bold text-text-muted">
+                {currencySymbol}
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amountExpr}
+                onChange={(e) => setAmountExpr(e.target.value)}
+                className="text-4xl sm:text-5xl font-extrabold text-text bg-transparent border-none outline-none tracking-tight text-center max-w-[280px]"
+                placeholder="0"
+              />
+            </div>
+
+            {/* Budget Warning Banner (Spec F-039) */}
+            {budgetWarning && (
+              <div className="mt-2 p-2.5 bg-danger/10 border border-danger/30 rounded-xl flex items-center gap-2 text-danger text-xs font-semibold animate-in fade-in">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>{budgetWarning}</span>
+              </div>
+            )}
+
+            {/* Interactive Keypad */}
+            {showKeypad && (
+              <div className="mt-3 pt-3 border-t border-border/40">
+                <Keypad
+                  value={amountExpr}
+                  onChange={setAmountExpr}
+                  onConfirm={() => setShowKeypad(false)}
+                />
+              </div>
+            )}
+          </Card>
         </div>
 
-        {/* Note */}
-        <Input
-          label={t('common.note', 'Note (Optional)')}
-          placeholder={t('transactions.notePlaceholder', 'Add remarks or details...')}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        {/* Right Column (Details: Category, Account, Date, Payee, Note, Tags) */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* Category Icon Grid (for expense & income) */}
+          {(type === 'expense' || type === 'income') && (
+            <Card className="p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  {t('transaction.category', 'Category')}
+                </label>
+                {categoryId && (
+                  <span className="text-xs font-bold text-primary">
+                    {categories?.find((c) => c.id === categoryId)?.name}
+                  </span>
+                )}
+              </div>
 
-        {/* Tags */}
-        {tags && tags.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-text-muted uppercase tracking-wider block">
-              {t('transactions.tags', 'Tags')}
+              <div className="grid grid-cols-4 gap-2.5 max-h-56 overflow-y-auto no-scrollbar pr-0.5">
+                {relevantCategories.map((cat) => {
+                  const isSelected = categoryId === cat.id
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCategoryId(cat.id)}
+                      className={cn(
+                        'flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-150',
+                        'hover:bg-surface-overlay active:scale-95 border focus:outline-none focus:ring-2 focus:ring-primary/40',
+                        isSelected
+                          ? 'border-primary bg-primary/10 shadow-xs'
+                          : 'border-transparent bg-surface-overlay/40',
+                      )}
+                    >
+                      <CategoryIcon
+                        icon={cat.icon}
+                        color={cat.color}
+                        size="md"
+                      />
+                      <span className="text-[11px] font-medium text-text truncate max-w-full mt-1.5 leading-tight">
+                        {cat.name}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Accounts Selector (Cards / Chips) */}
+          <Card className="p-4 sm:p-5 space-y-3">
+            <label className="text-xs font-semibold uppercase tracking-wider text-text-muted block">
+              {type === 'transfer' ? t('transactions.fromAccount', 'From Account') : t('transaction.account', 'Account')}
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map((tg) => {
-                const isSelected = selectedTagIds.includes(tg.id)
+
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+              {accounts?.map((acc) => {
+                const isSelected = accountId === acc.id
                 return (
                   <button
-                    key={tg.id}
+                    key={acc.id}
                     type="button"
-                    onClick={() => {
-                      if (isSelected) {
-                        setSelectedTagIds(selectedTagIds.filter((tid) => tid !== tg.id))
-                      } else {
-                        setSelectedTagIds([...selectedTagIds, tg.id])
-                      }
-                    }}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                    onClick={() => setAccountId(acc.id)}
+                    className={cn(
+                      'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
                       isSelected
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
-                        : 'border-border bg-surface-elevated text-text-muted hover:text-text'
-                    }`}
+                        ? 'border-primary bg-primary/10 text-primary shadow-xs'
+                        : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay',
+                    )}
                   >
-                    #{tg.name}
+                    <span>{acc.name}</span>
+                    <span className="text-[10px] text-text-muted font-normal uppercase">
+                      {acc.currency}
+                    </span>
                   </button>
                 )
               })}
             </div>
-          </div>
-        )}
-      </Card>
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
-        {!isEditing && (
+            {/* To Account (if Transfer) */}
+            {type === 'transfer' && (
+              <div className="pt-3 border-t border-border/40 space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-text-muted block">
+                  {t('transactions.toAccount', 'To Account')}
+                </label>
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                  {accounts
+                    ?.filter((a) => a.id !== accountId)
+                    .map((acc) => {
+                      const isSelected = toAccountId === acc.id
+                      return (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => setToAccountId(acc.id)}
+                          className={cn(
+                            'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary shadow-xs'
+                              : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay',
+                          )}
+                        >
+                          <span>{acc.name}</span>
+                          <span className="text-[10px] text-text-muted font-normal uppercase">
+                            {acc.currency}
+                          </span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Date with Quick Chips */}
+          <Card className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                {t('transaction.date', 'Date')}
+              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOccurredOn(todayStr)}
+                  className={cn(
+                    'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                    occurredOn === todayStr
+                      ? 'border-primary bg-primary/10 text-primary font-semibold'
+                      : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay',
+                  )}
+                >
+                  {t('common.today', 'Today')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOccurredOn(yesterdayStr)}
+                  className={cn(
+                    'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                    occurredOn === yesterdayStr
+                      ? 'border-primary bg-primary/10 text-primary font-semibold'
+                      : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay',
+                  )}
+                >
+                  {t('common.yesterday', 'Yesterday')}
+                </button>
+              </div>
+            </div>
+
+            <Input
+              type="date"
+              value={occurredOn}
+              onChange={(e) => setOccurredOn(e.target.value)}
+              className="h-10 text-sm"
+              required
+            />
+          </Card>
+
+          {/* Payee with Autocomplete Suggestions */}
+          <Card className="p-4 sm:p-5 space-y-2.5">
+            <Input
+              label={type === 'income' ? t('transactions.payer', 'Payer / Source') : t('transaction.payee', 'Payee / Merchant')}
+              placeholder="e.g. Swiggy, Amazon, Salary"
+              value={payee}
+              onChange={(e) => handlePayeeChange(e.target.value)}
+              className="h-10 text-sm"
+            />
+            {payeeSuggestions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[11px] text-text-muted flex items-center gap-1">
+                  <Sparkles size={12} /> {t('common.suggested', 'Suggested:')}
+                </span>
+                {payeeSuggestions.map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => handlePayeeChange(sug)}
+                    className="text-xs px-2.5 py-0.5 rounded-full bg-surface-overlay text-text hover:bg-primary/20 hover:text-primary transition-colors font-medium"
+                  >
+                    {sug}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Note & Tags Collapsible Card */}
+          <Card className="p-4 sm:p-5 space-y-3">
+            <button
+              type="button"
+              onClick={() => setIsNoteExpanded(!isNoteExpanded)}
+              className="w-full flex items-center justify-between text-xs font-semibold text-text-muted hover:text-text transition-colors"
+            >
+              <span>{t('transaction.note', 'Note & Tags')}</span>
+              {isNoteExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {isNoteExpanded && (
+              <div className="space-y-4 pt-2 border-t border-border/40 animate-in fade-in duration-150">
+                <Input
+                  label={t('common.note', 'Note (Optional)')}
+                  placeholder={t('transactions.notePlaceholder', 'Add remarks or details…')}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+
+                {tags && tags.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-text-muted uppercase tracking-wider block">
+                      {t('transaction.tags', 'Tags')}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map((tg) => {
+                        const isSelected = selectedTagIds.includes(tg.id)
+                        return (
+                          <button
+                            key={tg.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedTagIds(selectedTagIds.filter((tid) => tid !== tg.id))
+                              } else {
+                                setSelectedTagIds([...selectedTagIds, tg.id])
+                              }
+                            }}
+                            className={cn(
+                              'text-xs px-2.5 py-1 rounded-full border transition-all',
+                              isSelected
+                                ? 'border-primary bg-primary/10 text-primary font-semibold'
+                                : 'border-border bg-surface-elevated text-text-muted hover:text-text',
+                            )}
+                          >
+                            #{tg.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* Sticky Bottom Save Bar */}
+      <div className="fixed bottom-0 inset-x-0 bg-surface/95 backdrop-blur-md border-t border-border/60 p-4 z-40 shadow-lg">
+        <div className="max-w-3xl mx-auto flex items-center gap-3">
           <Button
             type="button"
-            variant="secondary"
-            className="flex-1"
-            onClick={() => handleSave(true)}
+            variant="outline"
+            className="flex-1 sm:flex-none sm:w-32"
+            onClick={() => navigate('/transactions')}
           >
-            {t('transactions.saveAndAddAnother', 'Save & Add Another')}
+            {t('common.cancel', 'Cancel')}
           </Button>
-        )}
-        <Button
-          type="button"
-          variant="primary"
-          className="flex-1"
-          onClick={() => handleSave(false)}
-        >
-          {isEditing ? t('common.update', 'Update') : t('common.save', 'Save')}
-        </Button>
+
+          {!isEditing && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="hidden sm:inline-flex flex-1"
+              onClick={() => handleSave(true)}
+            >
+              {t('transaction.saveAndAddAnother', 'Save & Add Another')}
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="primary"
+            className="flex-2 sm:flex-1"
+            onClick={() => handleSave(false)}
+          >
+            {isEditing ? t('common.saveChanges', 'Save Changes') : t('common.save', 'Save')}
+          </Button>
+        </div>
       </div>
-    </div>
+    </Page>
   )
 }

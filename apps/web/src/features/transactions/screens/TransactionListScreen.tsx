@@ -7,28 +7,42 @@ import { transactionRepo } from '../../../db/repositories/transactionRepo'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { useAuthStore } from '../../auth/stores/authStore'
 import { useToastStore } from '../../../ui/Toast'
-import { formatMoney } from '../../../lib/money'
-import { Button, Input, Select, Card, Badge } from '../../../ui'
+import { formatDayLabel } from '../../../lib/formatDayLabel'
+import {
+  Page,
+  PageHeader,
+  Button,
+  Input,
+  Card,
+  Chip,
+  Amount,
+  EmptyState,
+  Modal,
+  Select,
+  SkeletonCard,
+  SkeletonRow,
+} from '../../../ui'
+import { TransactionRow } from '../components/TransactionRow'
 import {
   Plus,
   Search,
-  Filter,
+  SlidersHorizontal,
   Trash2,
   Download,
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-  SlidersHorizontal,
   CheckSquare,
   Square,
+  Receipt,
+  X,
 } from 'lucide-react'
-import type { Transaction, TransactionType } from '@sanchay/shared'
+import type { Transaction, Account, Category } from '@sanchay/shared'
+
+const PAGE_SIZE_DAYS = 25
 
 export default function TransactionListScreen() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.session?.user)
-  const { hideBalances, baseCurrency, locale } = useSettingsStore()
+  const { baseCurrency, locale } = useSettingsStore()
   const showToast = useToastStore((s) => s.showToast)
 
   // Search & Filter state
@@ -36,11 +50,14 @@ export default function TransactionListScreen() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [accountFilter, setAccountFilter] = useState<string>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
-  const [isFilterExpanded, setIsFilterExpanded] = useState(false)
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
+  const [visibleDaysCount, setVisibleDaysCount] = useState(PAGE_SIZE_DAYS)
 
   // Multi-select bulk state
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), [])
 
   // Reactive DB queries
   const transactions = useLiveQuery(
@@ -50,11 +67,13 @@ export default function TransactionListScreen() {
   const accounts = useLiveQuery(() => db.accounts.filter((a) => !a.deletedAt).toArray(), [])
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [])
 
+  const isLoading = transactions === undefined || accounts === undefined || categories === undefined
+
   // Deduplicated categories for filter dropdown
   const uniqueCategories = useMemo(() => {
     if (!categories) return []
     const seen = new Set<string>()
-    const list: typeof categories = []
+    const list: Category[] = []
     for (const c of categories) {
       if (user?.id && c.userId && c.userId !== user.id) continue
       const norm = `${c.kind}:${c.name.trim().toLowerCase()}`
@@ -68,22 +87,16 @@ export default function TransactionListScreen() {
 
   // Lookup maps
   const accountMap = useMemo(() => {
-    const map = new Map<string, string>()
-    accounts?.forEach((a) => map.set(a.id, a.name))
+    const map = new Map<string, Account>()
+    accounts?.forEach((a) => map.set(a.id, a))
     return map
   }, [accounts])
 
   const categoryMap = useMemo(() => {
-    const map = new Map<string, string>()
-    categories?.forEach((c) => map.set(c.id, c.name))
+    const map = new Map<string, Category>()
+    categories?.forEach((c) => map.set(c.id, c))
     return map
   }, [categories])
-
-  const accountCurrencyMap = useMemo(() => {
-    const map = new Map<string, string>()
-    accounts?.forEach((a) => map.set(a.id, a.currency))
-    return map
-  }, [accounts])
 
   // Filtered transactions
   const filtered = useMemo(() => {
@@ -94,8 +107,13 @@ export default function TransactionListScreen() {
       if (typeFilter !== 'all' && tx.type !== typeFilter) return false
 
       // Account filter
-      if (accountFilter !== 'all' && tx.accountId !== accountFilter && tx.toAccountId !== accountFilter)
+      if (
+        accountFilter !== 'all' &&
+        tx.accountId !== accountFilter &&
+        tx.toAccountId !== accountFilter
+      ) {
         return false
+      }
 
       // Category filter
       if (categoryFilter !== 'all' && tx.categoryId !== categoryFilter) return false
@@ -105,7 +123,7 @@ export default function TransactionListScreen() {
         const query = searchQuery.trim().toLowerCase()
         const payeeMatch = tx.payee?.toLowerCase().includes(query) ?? false
         const noteMatch = tx.note?.toLowerCase().includes(query) ?? false
-        const catName = categoryMap.get(tx.categoryId ?? '')?.toLowerCase() ?? ''
+        const catName = categoryMap.get(tx.categoryId ?? '')?.name.toLowerCase() ?? ''
         const catMatch = catName.includes(query)
         if (!payeeMatch && !noteMatch && !catMatch) return false
       }
@@ -147,11 +165,29 @@ export default function TransactionListScreen() {
     return Array.from(map.values())
   }, [filtered])
 
+  const visibleGroups = useMemo(
+    () => groupedByDay.slice(0, visibleDaysCount),
+    [groupedByDay, visibleDaysCount],
+  )
+
+  const hasMoreDays = groupedByDay.length > visibleDaysCount
+
+  // Active filters check
+  const hasActiveFilters =
+    typeFilter !== 'all' || accountFilter !== 'all' || categoryFilter !== 'all' || searchQuery !== ''
+
+  const clearAllFilters = () => {
+    setTypeFilter('all')
+    setAccountFilter('all')
+    setCategoryFilter('all')
+    setSearchQuery('')
+  }
+
   // Multi-select handlers
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string, isSelected: boolean) => {
     const next = new Set(selectedIds)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
+    if (isSelected) next.add(id)
+    else next.delete(id)
     setSelectedIds(next)
   }
 
@@ -167,13 +203,23 @@ export default function TransactionListScreen() {
     if (selectedIds.size === 0) return
     const idsToDelete = Array.from(selectedIds)
 
-    if (window.confirm(t('transactions.bulkDeleteConfirm', `Delete ${idsToDelete.length} transactions?`))) {
+    if (
+      window.confirm(
+        t('transactions.bulkDeleteConfirm', {
+          count: idsToDelete.length,
+          defaultValue: `Delete ${idsToDelete.length} transactions?`,
+        }),
+      )
+    ) {
       await transactionRepo.bulkDelete(idsToDelete)
       setSelectedIds(new Set())
       setIsSelectMode(false)
 
       showToast({
-        message: t('transactions.deletedCount', `Deleted ${idsToDelete.length} transactions`),
+        message: t('transactions.deletedCount', {
+          count: idsToDelete.length,
+          defaultValue: `Deleted ${idsToDelete.length} transactions`,
+        }),
         type: 'info',
         durationMs: 8000,
         action: {
@@ -192,15 +238,25 @@ export default function TransactionListScreen() {
   const handleExportCSV = () => {
     if (filtered.length === 0) return
 
-    const headers = ['Date', 'Type', 'Amount', 'Currency', 'Account', 'To Account', 'Category', 'Payee', 'Note']
+    const headers = [
+      'Date',
+      'Type',
+      'Amount',
+      'Currency',
+      'Account',
+      'To Account',
+      'Category',
+      'Payee',
+      'Note',
+    ]
     const rows = filtered.map((tx) => [
       tx.occurredOn,
       tx.type,
       (tx.amountMinor / 100).toFixed(2),
-      accountCurrencyMap.get(tx.accountId) ?? '',
-      accountMap.get(tx.accountId) ?? '',
-      tx.toAccountId ? accountMap.get(tx.toAccountId) ?? '' : '',
-      tx.categoryId ? categoryMap.get(tx.categoryId) ?? '' : '',
+      accountMap.get(tx.accountId)?.currency ?? baseCurrency,
+      accountMap.get(tx.accountId)?.name ?? '',
+      tx.toAccountId ? accountMap.get(tx.toAccountId)?.name ?? '' : '',
+      tx.categoryId ? categoryMap.get(tx.categoryId)?.name ?? '' : '',
       `"${(tx.payee ?? '').replace(/"/g, '""')}"`,
       `"${(tx.note ?? '').replace(/"/g, '""')}"`,
     ])
@@ -210,129 +266,158 @@ export default function TransactionListScreen() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `sanchay-transactions-${new Date().toISOString().substring(0, 10)}.csv`
+    link.download = `sanchay-transactions-${todayStr}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
 
-  const renderAmount = (minor: number, currency = baseCurrency) => {
-    if (hideBalances) return '••••••'
-    return formatMoney(minor, currency, locale)
+  if (isLoading) {
+    return (
+      <Page width="default" className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-36 bg-surface-elevated animate-pulse rounded-lg" />
+          <div className="h-9 w-24 bg-surface-elevated animate-pulse rounded-xl" />
+        </div>
+        <SkeletonCard className="h-14" />
+        <div className="space-y-3 pt-2">
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </Page>
+    )
   }
 
   return (
-    <div className="space-y-4 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">{t('transactions.title', 'Transactions')}</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            {filtered.length} {t('transactions.records', 'records')}
-          </p>
-        </div>
+      <PageHeader
+        title={t('transactions.title', 'Transactions')}
+        subtitle={`${filtered.length} ${t('transactions.records', 'records')}`}
+        actions={
+          <div className="flex items-center gap-2">
+            {filtered.length > 0 && (
+              <>
+                <Button
+                  variant={isSelectMode ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setIsSelectMode(!isSelectMode)
+                    setSelectedIds(new Set())
+                  }}
+                >
+                  {isSelectMode ? t('common.done', 'Done') : t('common.select', 'Select')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCSV}
+                  title={t('transactions.exportCSV', 'Export CSV')}
+                >
+                  <Download size={16} />
+                </Button>
+              </>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus size={16} />}
+              onClick={() => navigate('/transactions/new')}
+            >
+              {t('transactions.addTransaction', 'Add')}
+            </Button>
+          </div>
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          {filtered.length > 0 && (
-            <>
-              <Button
-                variant={isSelectMode ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode)
-                  setSelectedIds(new Set())
-                }}
-              >
-                {isSelectMode ? t('common.done', 'Done') : t('common.select', 'Select')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportCSV}
-                title={t('transactions.exportCSV', 'Export CSV')}
-              >
-                <Download size={16} />
-              </Button>
-            </>
-          )}
-          <Button
-            variant="primary"
-            leftIcon={<Plus size={16} />}
-            onClick={() => navigate('/transactions/new')}
-          >
-            {t('transactions.addTransaction', 'Add')}
-          </Button>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <Card className="p-3">
+      {/* Sticky Search & Filter Bar */}
+      <div className="sticky top-14 z-10 bg-surface/95 backdrop-blur-md pt-1 pb-3 space-y-2.5 -mx-4 px-4 sm:-mx-6 sm:px-6">
         <div className="flex items-center gap-2">
           <Input
-            placeholder={t('transactions.searchPlaceholder', 'Search payee, category, note...')}
+            placeholder={t('transactions.searchPlaceholder', 'Search payee, note, category…')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search size={16} />}
             className="h-10 text-sm"
           />
           <Button
-            variant={isFilterExpanded ? 'secondary' : 'outline'}
+            variant={hasActiveFilters ? 'primary' : 'outline'}
             size="sm"
-            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-            className="shrink-0"
+            onClick={() => setIsFilterModalOpen(true)}
+            leftIcon={<SlidersHorizontal size={15} />}
+            className="shrink-0 h-10 px-3"
           >
-            <Filter size={16} />
+            <span className="hidden sm:inline">{t('transactions.filter', 'Filters')}</span>
           </Button>
         </div>
 
-        {isFilterExpanded && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 mt-3 border-t border-border">
-            <Select
-              label={t('common.type', 'Type')}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              options={[
-                { value: 'all', label: 'All Types' },
-                { value: 'expense', label: 'Expense' },
-                { value: 'income', label: 'Income' },
-                { value: 'transfer', label: 'Transfer' },
-                { value: 'adjustment', label: 'Adjustment' },
-              ]}
+        {/* Filter Chips Pill Row */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {typeFilter !== 'all' && (
+            <Chip
+              label={`Type: ${typeFilter}`}
+              selected={true}
+              onRemove={() => setTypeFilter('all')}
             />
+          )}
 
-            <Select
-              label={t('accounts.account', 'Account')}
-              value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-              options={[
-                { value: 'all', label: 'All Accounts' },
-                ...(accounts?.map((a) => ({ value: a.id, label: a.name })) ?? []),
-              ]}
+          {accountFilter !== 'all' && (
+            <Chip
+              label={`Account: ${accountMap.get(accountFilter)?.name || accountFilter}`}
+              selected={true}
+              onRemove={() => setAccountFilter('all')}
             />
+          )}
 
-            <Select
-              label={t('categories.category', 'Category')}
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              options={[
-                { value: 'all', label: 'All Categories' },
-                ...uniqueCategories.map((c) => ({ value: c.id, label: c.name })),
-              ]}
+          {categoryFilter !== 'all' && (
+            <Chip
+              label={`Category: ${categoryMap.get(categoryFilter)?.name || categoryFilter}`}
+              selected={true}
+              onRemove={() => setCategoryFilter('all')}
             />
-          </div>
-        )}
-      </Card>
+          )}
+
+          {searchQuery.trim() !== '' && (
+            <Chip
+              label={`Search: "${searchQuery}"`}
+              selected={true}
+              onRemove={() => setSearchQuery('')}
+            />
+          )}
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-xs text-text-muted hover:text-danger font-medium px-2 py-1 rounded-lg transition-colors shrink-0"
+            >
+              {t('transactions.clearAll', 'Clear all')}
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Bulk actions banner */}
       {isSelectMode && (
-        <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between text-sm">
+        <div className="sticky top-32 z-20 p-3 bg-primary/10 border border-primary/20 backdrop-blur-md rounded-2xl flex items-center justify-between text-sm shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={selectAll}
-              className="text-text font-medium flex items-center gap-1.5 hover:underline"
+              className="text-text font-medium flex items-center gap-1.5 hover:underline focus:outline-none"
             >
-              {selectedIds.size === filtered.length ? <CheckSquare size={18} /> : <Square size={18} />}
-              <span>{selectedIds.size} selected</span>
+              {selectedIds.size === filtered.length ? (
+                <CheckSquare size={18} className="text-primary" />
+              ) : (
+                <Square size={18} className="text-text-muted" />
+              )}
+              <span>
+                {t('transactions.selectedCount', {
+                  count: selectedIds.size,
+                  defaultValue: `${selectedIds.size} selected`,
+                })}
+              </span>
             </button>
           </div>
           <div className="flex items-center gap-2">
@@ -351,114 +436,151 @@ export default function TransactionListScreen() {
 
       {/* Grouped Transaction List */}
       {groupedByDay.length === 0 ? (
-        <Card className="py-16 text-center text-text-muted">
-          <p className="text-base font-medium">{t('transactions.noMatches', 'No transactions found.')}</p>
-          <p className="text-xs mt-1">{t('transactions.tryAdjustingFilters', 'Try adjusting your search or filters.')}</p>
-        </Card>
+        <EmptyState
+          icon={<Receipt size={28} />}
+          title={
+            hasActiveFilters
+              ? t('transactions.noMatches', 'No matching transactions')
+              : t('transactions.noTransactions', 'No transactions yet')
+          }
+          description={
+            hasActiveFilters
+              ? t('transactions.tryAdjustingFilters', 'Try adjusting your search query or active filters.')
+              : t(
+                  'transactions.noTransactionsDesc',
+                  'Start tracking your spending and income by recording your first transaction.',
+                )
+          }
+          actionLabel={hasActiveFilters ? t('transactions.clearAll', 'Clear all') : t('transactions.addTransaction', 'Add Transaction')}
+          onAction={hasActiveFilters ? clearAllFilters : () => navigate('/transactions/new')}
+          className="py-16"
+        />
       ) : (
         <div className="space-y-4">
-          {groupedByDay.map((group) => (
-            <Card key={group.date} className="p-0 overflow-hidden">
+          {visibleGroups.map((group) => (
+            <Card key={group.date} className="p-0 overflow-hidden rounded-2xl border-border/60">
               {/* Daily Header with Subtotals */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-surface-overlay/50 border-b border-border/50 text-xs">
-                <span className="font-bold text-text">{group.date}</span>
+              <div className="sticky top-32 z-5 flex items-center justify-between px-4 py-2 bg-surface-elevated/90 backdrop-blur-xs border-b border-border/40 text-xs">
+                <span className="font-bold text-text">
+                  {formatDayLabel(group.date, todayStr)}
+                </span>
                 <div className="flex items-center gap-3 font-semibold">
                   {group.dayIncomeMinor > 0 && (
-                    <span className="text-success">+{renderAmount(group.dayIncomeMinor)}</span>
+                    <Amount
+                      minor={group.dayIncomeMinor}
+                      currency={baseCurrency}
+                      tone="income"
+                      showSign={true}
+                      className="text-xs font-bold"
+                    />
                   )}
                   {group.dayExpenseMinor > 0 && (
-                    <span className="text-danger">-{renderAmount(group.dayExpenseMinor)}</span>
+                    <Amount
+                      minor={group.dayExpenseMinor}
+                      currency={baseCurrency}
+                      tone="expense"
+                      showSign={true}
+                      className="text-xs font-bold text-text"
+                    />
                   )}
                 </div>
               </div>
 
               {/* Transactions in this Day */}
-              <div className="divide-y divide-border/50">
-                {group.items.map((tx) => {
-                  const isIncome = tx.type === 'income'
-                  const isTransfer = tx.type === 'transfer'
-                  const isAdjustment = tx.type === 'adjustment'
-                  const isSelected = selectedIds.has(tx.id)
-
-                  return (
-                    <button
-                      type="button"
-                      key={tx.id}
-                      onClick={() => {
-                        if (isSelectMode) toggleSelect(tx.id)
-                        else navigate(`/transactions/${tx.id}`)
-                      }}
-                      className={`w-full text-left px-4 py-3.5 flex items-center justify-between transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
-                        isSelected ? 'bg-primary/10' : 'hover:bg-surface-overlay/40'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {isSelectMode ? (
-                          <div className="text-primary shrink-0">
-                            {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
-                          </div>
-                        ) : (
-                          <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                              isIncome
-                                ? 'bg-success/10 text-success'
-                                : isTransfer
-                                ? 'bg-primary/10 text-primary'
-                                : isAdjustment
-                                ? 'bg-warning/10 text-warning'
-                                : 'bg-surface-overlay text-text'
-                            }`}
-                          >
-                            {isTransfer ? (
-                              <ArrowRight size={18} />
-                            ) : isIncome ? (
-                              <TrendingUp size={18} />
-                            ) : isAdjustment ? (
-                              <SlidersHorizontal size={18} />
-                            ) : (
-                              <TrendingDown size={18} />
-                            )}
-                          </div>
-                        )}
-
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-text truncate">
-                            {tx.payee ||
-                              (tx.categoryId ? categoryMap.get(tx.categoryId) : undefined) ||
-                              tx.type.toUpperCase()}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5 truncate">
-                            <span>{accountMap.get(tx.accountId) ?? 'Unknown'}</span>
-                            {isTransfer && tx.toAccountId && (
-                              <span>→ {accountMap.get(tx.toAccountId)}</span>
-                            )}
-                            {tx.note && <span>• {tx.note}</span>}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span
-                          className={`text-sm font-bold ${
-                            isIncome || (isAdjustment && tx.adjustmentSign === '+')
-                              ? 'text-success'
-                              : isTransfer
-                              ? 'text-primary'
-                              : 'text-text'
-                          }`}
-                        >
-                          {isIncome || (isAdjustment && tx.adjustmentSign === '+') ? '+' : isTransfer ? '' : '-'}
-                          {renderAmount(tx.amountMinor, accountCurrencyMap.get(tx.accountId) ?? baseCurrency)}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
+              <div className="divide-y divide-border/30 p-1">
+                {group.items.map((tx) => (
+                  <TransactionRow
+                    key={tx.id}
+                    transaction={tx}
+                    category={tx.categoryId ? categoryMap.get(tx.categoryId) : undefined}
+                    account={accountMap.get(tx.accountId)}
+                    toAccount={tx.toAccountId ? accountMap.get(tx.toAccountId) : undefined}
+                    isSelectMode={isSelectMode}
+                    selected={selectedIds.has(tx.id)}
+                    onSelect={toggleSelect}
+                  />
+                ))}
               </div>
             </Card>
           ))}
+
+          {/* Load More Pagination */}
+          {hasMoreDays && (
+            <div className="text-center pt-2 pb-6">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => setVisibleDaysCount((prev) => prev + PAGE_SIZE_DAYS)}
+                className="w-full sm:w-auto px-8"
+              >
+                Load more ({groupedByDay.length - visibleDaysCount} days remaining)
+              </Button>
+            </div>
+          )}
         </div>
       )}
-    </div>
+
+      {/* Filter Bottom-Sheet / Modal */}
+      <Modal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        title={t('transactions.filter', 'Filter Transactions')}
+      >
+        <div className="space-y-4 py-2">
+          <Select
+            label={t('transaction.type', 'Type')}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            options={[
+              { value: 'all', label: t('transactions.allTypes', 'All Types') },
+              { value: 'expense', label: t('transaction.expense', 'Expense') },
+              { value: 'income', label: t('transaction.income', 'Income') },
+              { value: 'transfer', label: t('transaction.transfer', 'Transfer') },
+              { value: 'adjustment', label: t('transaction.adjustment', 'Adjustment') },
+            ]}
+          />
+
+          <Select
+            label={t('transaction.account', 'Account')}
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value)}
+            options={[
+              { value: 'all', label: t('transactions.allAccounts', 'All Accounts') },
+              ...(accounts?.map((a) => ({ value: a.id, label: a.name })) ?? []),
+            ]}
+          />
+
+          <Select
+            label={t('transaction.category', 'Category')}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            options={[
+              { value: 'all', label: t('transactions.allCategories', 'All Categories') },
+              ...uniqueCategories.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
+
+          <div className="flex items-center gap-3 pt-4 border-t border-border">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                clearAllFilters()
+                setIsFilterModalOpen(false)
+              }}
+            >
+              {t('transactions.clearAll', 'Clear All')}
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={() => setIsFilterModalOpen(false)}
+            >
+              {t('common.done', 'Done')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </Page>
   )
 }

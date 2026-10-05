@@ -1,9 +1,11 @@
 import { useEffect, type ReactNode } from 'react'
-import { useSettingsStore } from '../features/settings/stores/settingsStore'
+import { useSettingsStore, type Accent } from '../features/settings/stores/settingsStore'
 
 interface ThemeProviderProps {
   children: ReactNode
 }
+
+const VALID_ACCENTS: Accent[] = ['teal', 'blue', 'violet', 'rose', 'amber', 'emerald']
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const theme = useSettingsStore((s) => s.theme)
@@ -20,10 +22,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       root.classList.toggle('dark', theme === 'dark')
     }
 
-    // Apply accent CSS variable
-    const color = accentColors[accent] ?? accentColors['emerald'] ?? '160 84% 39%'
-    root.style.setProperty('--color-accent', color)
-    root.style.setProperty('--color-primary', color)
+    // Set data-accent on <html> (no longer writes --color-primary or --color-accent inline)
+    const validAccent = VALID_ACCENTS.includes(accent as Accent) ? accent : 'teal'
+    root.setAttribute('data-accent', validAccent)
   }, [theme, accent])
 
   // Listen for system theme changes
@@ -39,13 +40,4 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, [theme])
 
   return <>{children}</>
-}
-
-const accentColors: Record<string, string> = {
-  emerald: '160 84% 39%',
-  blue: '217 91% 60%',
-  violet: '250 89% 62%',
-  rose: '347 77% 50%',
-  amber: '43 96% 56%',
-  teal: '173 80% 36%',
 }

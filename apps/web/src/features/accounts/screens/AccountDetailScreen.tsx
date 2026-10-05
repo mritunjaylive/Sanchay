@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
@@ -6,23 +6,52 @@ import { db } from '../../../db/db'
 import { accountRepo } from '../../../db/repositories/accountRepo'
 import { transactionRepo } from '../../../db/repositories/transactionRepo'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
-import { accountBalance } from '../../../domain/balance'
+import { accountBalance, balanceOn } from '../../../domain/balance'
 import { getCreditCardSummary } from '../../../domain/creditCards'
+import { formatDayLabel } from '../../../lib/formatDayLabel'
 import { formatMoney, parseAmountToMinor } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Modal, Badge } from '../../../ui'
-import { ArrowLeft, CheckCircle2, SlidersHorizontal, Archive, Trash2, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Modal,
+  Badge,
+  Amount,
+  Sparkline,
+  ProgressBar,
+  EmptyState,
+  SkeletonCard,
+  SkeletonRow,
+} from '../../../ui'
+import { TransactionRow } from '../../transactions'
+import {
+  CheckCircle2,
+  SlidersHorizontal,
+  Archive,
+  Trash2,
+  Receipt,
+  CreditCard,
+  Building,
+  Plus,
+} from 'lucide-react'
+import type { Transaction, Account, Category } from '@sanchay/shared'
 
 export default function AccountDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { hideBalances, locale } = useSettingsStore()
+  const { hideBalances, baseCurrency, locale } = useSettingsStore()
 
   const [isReconcileOpen, setIsReconcileOpen] = useState(false)
   const [actualBalanceStr, setActualBalanceStr] = useState('')
   const [reconcileNote, setReconcileNote] = useState('')
 
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), [])
+
   const account = useLiveQuery(() => (id ? db.accounts.get(id) : undefined), [id])
+  const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [])
   const transactions = useLiveQuery(
     async () => {
       if (!id) return []
@@ -38,11 +67,70 @@ export default function AccountDetailScreen() {
     [id],
   )
 
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, Category>()
+    categories?.forEach((c) => map.set(c.id, c))
+    return map
+  }, [categories])
+
+  const isLoading = account === undefined || transactions === undefined
+
+  // 30-day balance history for Sparkline
+  const last30Days = useMemo(() => {
+    const dates: string[] = []
+    const d = new Date()
+    for (let i = 29; i >= 0; i--) {
+      const cur = new Date(d)
+      cur.setDate(d.getDate() - i)
+      dates.push(cur.toISOString().substring(0, 10))
+    }
+    return dates
+  }, [])
+
+  const sparklineData = useMemo(() => {
+    if (!account || !transactions) return []
+    return last30Days.map((date) => balanceOn(account, transactions, date))
+  }, [account, transactions, last30Days])
+
+  // Group transactions by day
+  const groupedByDay = useMemo(() => {
+    if (!transactions) return []
+    const map = new Map<string, Transaction[]>()
+    for (const tx of transactions) {
+      let list = map.get(tx.occurredOn)
+      if (!list) {
+        list = []
+        map.set(tx.occurredOn, list)
+      }
+      list.push(tx)
+    }
+    return Array.from(map.entries()).map(([date, items]) => ({ date, items }))
+  }, [transactions])
+
+  if (isLoading) {
+    return (
+      <Page width="default" className="space-y-6">
+        <SkeletonCard className="h-44" />
+        <div className="space-y-3">
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </Page>
+    )
+  }
+
   if (!account) {
     return (
-      <div className="p-8 text-center text-text-muted">
-        {t('accounts.accountNotFound', 'Account not found.')}
-      </div>
+      <Page width="default">
+        <EmptyState
+          icon={<CreditCard size={28} />}
+          title={t('accounts.accountNotFound', 'Account not found')}
+          description="The requested account does not exist or has been deleted."
+          actionLabel={t('accounts.title', 'View Accounts')}
+          onAction={() => navigate('/accounts')}
+        />
+      </Page>
     )
   }
 
@@ -100,200 +188,190 @@ export default function AccountDetailScreen() {
   }
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => navigate('/accounts')}
-          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text font-medium"
-        >
-          <ArrowLeft size={16} />
-          <span>{t('accounts.backToAccounts', 'All Accounts')}</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<SlidersHorizontal size={14} />}
-            onClick={() => {
-              setActualBalanceStr('')
-              setIsReconcileOpen(true)
-            }}
-          >
-            {t('accounts.reconcile', 'Reconcile')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleArchiveToggle}
-            title={account.archivedAt ? 'Unarchive' : 'Archive'}
-          >
-            <Archive size={16} className={account.archivedAt ? 'text-primary' : 'text-text-muted'} />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleDelete} title="Delete">
-            <Trash2 size={16} className="text-danger" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Account Balance Card */}
-      <Card className="bg-gradient-to-br from-surface-elevated to-surface-overlay/30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-text">{account.name}</h1>
-              <Badge variant="neutral">{account.kind.replace('_', ' ')}</Badge>
-              {account.archivedAt && <Badge variant="warning">{t('accounts.archived', 'Archived')}</Badge>}
-            </div>
-            <p className="text-xs text-text-muted mt-1">
-              {t('accounts.openedOn', 'Opened on')} {account.openingDate} • {account.currency}
-            </p>
+      <PageHeader
+        title={account.name}
+        subtitle={
+          <div className="flex items-center gap-2 mt-1">
+            <span className="capitalize">{t(`account.kinds.${account.kind}`, account.kind.replace('_', ' '))}</span>
+            <span>•</span>
+            <span className="uppercase font-semibold">{account.currency}</span>
+            {account.archivedAt && (
+              <Badge variant="neutral" size="sm">
+                Archived
+              </Badge>
+            )}
           </div>
+        }
+        backTo="/accounts"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<SlidersHorizontal size={15} />}
+              onClick={() => {
+                setActualBalanceStr((currentBalance / 100).toString())
+                setIsReconcileOpen(true)
+              }}
+            >
+              {t('account.reconcile', 'Reconcile')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Archive size={15} />}
+              onClick={handleArchiveToggle}
+            >
+              {account.archivedAt ? 'Unarchive' : 'Archive'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              title={t('common.delete', 'Delete')}
+            >
+              <Trash2 size={16} className="text-danger" />
+            </Button>
+          </div>
+        }
+      />
 
-          <div className="text-right">
-            <span className="text-xs text-text-muted uppercase tracking-wider block">
+      {/* Hero Balance & Details Card */}
+      <Card variant="hero" className="p-6 sm:p-7 rounded-3xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block">
               {t('accounts.currentBalance', 'Current Balance')}
             </span>
-            <div className="text-3xl font-extrabold text-text mt-0.5">
-              {hideBalances ? '••••••' : formatMoney(currentBalance, account.currency, locale)}
+            <div className="mt-1">
+              <Amount
+                minor={currentBalance}
+                currency={account.currency}
+                tone={currentBalance < 0 ? 'danger' : 'neutral'}
+                showSign={false}
+                size="display"
+                className="font-extrabold text-text"
+              />
             </div>
+            {account.openingDate && (
+              <span className="text-xs text-text-muted block mt-1">
+                Opened {account.openingDate} · Opening:{' '}
+                {formatMoney(account.openingBalanceMinor, account.currency, locale)}
+              </span>
+            )}
           </div>
+
+          {/* Sparkline */}
+          {sparklineData.length > 1 && !hideBalances && (
+            <div className="w-full sm:w-44 pt-2">
+              <span className="text-[11px] text-text-muted block mb-1">30-day balance trend</span>
+              <Sparkline data={sparklineData} height={44} className="w-full" />
+            </div>
+          )}
         </div>
 
-        {/* Credit Card Specific Stats */}
-        {cardSummary && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-4 border-t border-border/50 text-xs">
-            <div>
-              <span className="text-text-muted block">{t('accounts.creditLimit', 'Credit Limit')}</span>
+        {/* Credit Card Specific Progress & Dates */}
+        {isCreditCard && cardSummary && (
+          <div className="mt-6 pt-5 border-t border-border/40 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-text-muted">
+                Limit: {formatMoney(cardSummary.creditLimitMinor ?? 0, account.currency, locale)}
+              </span>
               <span className="font-semibold text-text">
-                {cardSummary.creditLimitMinor ? formatMoney(cardSummary.creditLimitMinor, account.currency, locale) : 'N/A'}
+                Available: {formatMoney(cardSummary.availableCreditMinor ?? 0, account.currency, locale)}
               </span>
             </div>
-            <div>
-              <span className="text-text-muted block">{t('accounts.availableCredit', 'Available')}</span>
-              <span className="font-semibold text-success">
-                {cardSummary.availableCreditMinor !== null ? formatMoney(cardSummary.availableCreditMinor, account.currency, locale) : 'N/A'}
-              </span>
-            </div>
-            <div>
-              <span className="text-text-muted block">{t('accounts.utilization', 'Utilization')}</span>
-              <span className="font-semibold text-text">
-                {cardSummary.utilizationPercent !== null ? `${cardSummary.utilizationPercent}%` : 'N/A'}
-              </span>
-            </div>
-            <div>
-              <span className="text-text-muted block">{t('accounts.amountDue', 'Amount Due')}</span>
-              <span className="font-semibold text-danger">
-                {formatMoney(cardSummary.statementAmountDueMinor, account.currency, locale)}
-              </span>
-            </div>
+
+            <ProgressBar
+              value={cardSummary.utilizationPercent ?? 0}
+              max={100}
+              tone={
+                (cardSummary.utilizationPercent ?? 0) > 80
+                  ? 'danger'
+                  : (cardSummary.utilizationPercent ?? 0) > 50
+                  ? 'warning'
+                  : 'primary'
+              }
+              showLabel={true}
+            />
+
+            {(account.statementDay || account.dueDay) && (
+              <div className="flex gap-4 pt-1 text-xs text-text-muted">
+                {account.statementDay && <span>Statement day: {account.statementDay}th</span>}
+                {account.dueDay && <span>Payment due: {account.dueDay}th</span>}
+              </div>
+            )}
           </div>
         )}
       </Card>
 
-      {/* Transactions History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('transactions.title', 'Transactions')}</CardTitle>
-          <span className="text-xs text-text-muted font-medium">
-            {transactions?.length ?? 0} {t('transactions.records', 'records')}
-          </span>
-        </CardHeader>
-        <CardContent>
-          {!transactions || transactions.length === 0 ? (
-            <div className="py-12 text-center text-text-muted text-sm">
-              {t('transactions.noTransactionsForAccount', 'No transactions recorded for this account yet.')}
-            </div>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {transactions.map((tx) => {
-                const isIncome = tx.type === 'income'
-                const isTransfer = tx.type === 'transfer'
-                const isAdjustment = tx.type === 'adjustment'
-                const isIncomingTransfer = isTransfer && tx.toAccountId === account.id
+      {/* Transaction History */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-text">
+            {t('transactions.title', 'Transactions')} ({transactions?.length ?? 0})
+          </h3>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus size={16} />}
+            onClick={() => navigate(`/transactions/new?type=expense`)}
+          >
+            {t('transactions.addTransaction', 'Add')}
+          </Button>
+        </div>
 
-                return (
-                  <button
-                    type="button"
-                    key={tx.id}
-                    onClick={() => navigate(`/transactions/${tx.id}`)}
-                    className="w-full text-left py-3 flex items-center justify-between hover:bg-surface-overlay/50 px-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isIncomingTransfer || isIncome
-                            ? 'bg-success/10 text-success'
-                            : isTransfer
-                            ? 'bg-primary/10 text-primary'
-                            : isAdjustment
-                            ? 'bg-warning/10 text-warning'
-                            : 'bg-surface-overlay text-text'
-                        }`}
-                      >
-                        {isTransfer ? (
-                          <ArrowRight size={18} />
-                        ) : isIncome || isIncomingTransfer ? (
-                          <TrendingUp size={18} />
-                        ) : (
-                          <TrendingDown size={18} />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-text truncate">
-                          {tx.payee || tx.type.toUpperCase()}
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          {tx.occurredOn} {tx.note ? `• ${tx.note}` : ''}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span
-                        className={`text-sm font-bold ${
-                          isIncomingTransfer || isIncome || (isAdjustment && tx.adjustmentSign === '+')
-                            ? 'text-success'
-                            : 'text-text'
-                        }`}
-                      >
-                        {isIncomingTransfer || isIncome || (isAdjustment && tx.adjustmentSign === '+') ? '+' : '-'}
-                        {hideBalances ? '••••••' : formatMoney(tx.amountMinor, account.currency, locale)}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {groupedByDay.length === 0 ? (
+          <EmptyState
+            icon={<Receipt size={28} />}
+            title="No transactions recorded"
+            description="Transactions linked to this account will show up here."
+            actionLabel={t('transactions.addTransaction', 'Add Transaction')}
+            onAction={() => navigate('/transactions/new')}
+          />
+        ) : (
+          <div className="space-y-4">
+            {groupedByDay.map(({ date, items }) => (
+              <Card key={date} className="p-0 overflow-hidden rounded-2xl border-border/60">
+                <div className="px-4 py-2 bg-surface-elevated/90 border-b border-border/40 text-xs font-bold text-text">
+                  {formatDayLabel(date, todayStr)}
+                </div>
+                <div className="divide-y divide-border/30 p-1">
+                  {items.map((tx) => (
+                    <TransactionRow
+                      key={tx.id}
+                      transaction={tx}
+                      category={tx.categoryId ? categoryMap.get(tx.categoryId) : undefined}
+                      account={account}
+                    />
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Reconcile Modal */}
       <Modal
         isOpen={isReconcileOpen}
         onClose={() => setIsReconcileOpen(false)}
         title={t('accounts.reconcileTitle', 'Reconcile Account Balance')}
-        description={t(
-          'accounts.reconcileDesc',
-          'Enter the actual balance shown on your bank statement or wallet. Sanchay will create an adjustment entry.',
-        )}
       >
-        <form onSubmit={handleReconcile} className="space-y-4">
-          <div className="p-3 bg-surface rounded-xl border border-border flex justify-between items-center text-sm">
-            <span className="text-text-muted">{t('accounts.recordedBalance', 'Recorded Balance')}</span>
-            <span className="font-bold text-text">
-              {formatMoney(currentBalance, account.currency, locale)}
-            </span>
-          </div>
+        <form onSubmit={handleReconcile} className="space-y-4 py-1">
+          <p className="text-xs text-text-muted">
+            {t(
+              'accounts.reconcileDesc',
+              'Enter your actual current statement balance. Sanchay will record an automatic adjustment transaction for the difference.',
+            )}
+          </p>
 
           <Input
             type="text"
             inputMode="decimal"
-            label={t('accounts.actualBalance', 'Actual Real-World Balance')}
-            placeholder="0.00"
+            label={t('accounts.actualBalance', 'Actual Statement Balance')}
             value={actualBalanceStr}
             onChange={(e) => setActualBalanceStr(e.target.value)}
             required
@@ -301,21 +379,26 @@ export default function AccountDetailScreen() {
 
           <Input
             label={t('common.note', 'Note (Optional)')}
-            placeholder={t('accounts.reconcileNotePlaceholder', 'e.g. Monthly statement check')}
+            placeholder="e.g. October bank statement check"
             value={reconcileNote}
             onChange={(e) => setReconcileNote(e.target.value)}
           />
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsReconcileOpen(false)}>
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsReconcileOpen(false)}
+            >
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary">
-              {t('accounts.applyAdjustment', 'Apply Adjustment')}
+            <Button type="submit" variant="primary" className="flex-1">
+              {t('accounts.reconcile', 'Reconcile')}
             </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   )
 }

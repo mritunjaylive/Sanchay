@@ -12,10 +12,34 @@ import {
   recordEmiTransactions,
   percentToBps,
 } from '../../../domain/loans'
+import { accountBalance } from '../../../domain/balance'
 import { formatMoney, parseAmountToMinor } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Modal, Badge } from '../../../ui'
-import { Plus, Landmark, DollarSign, Calendar, CheckCircle2, ArrowRight } from 'lucide-react'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Select,
+  Modal,
+  Badge,
+  Amount,
+  ProgressBar,
+  EmptyState,
+  SkeletonCard,
+} from '../../../ui'
+import {
+  Plus,
+  Landmark,
+  Calendar,
+  CheckCircle2,
+  Building,
+  CreditCard,
+  DollarSign,
+  PieChart,
+} from 'lucide-react'
 import type { Account, LoanTerms } from '@sanchay/shared'
+import { cn } from '../../../lib/cn'
 
 export default function LoansScreen() {
   const { t } = useTranslation()
@@ -40,6 +64,8 @@ export default function LoansScreen() {
   const loanTerms = useLiveQuery(() => db.loanTerms.filter((l) => !l.deletedAt).toArray(), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
+  const isLoading = accounts === undefined || loanTerms === undefined || transactions === undefined
+
   // Filter loan accounts
   const loanAccounts = useMemo(() => {
     return (accounts ?? []).filter((a) => a.kind === 'loan')
@@ -61,12 +87,27 @@ export default function LoansScreen() {
     return amortizationSchedule(selectedTerms)
   }, [selectedTerms])
 
+  // Current balance of selected loan
+  const currentBalanceMinor = useMemo(() => {
+    if (!selectedAccount || !transactions) return 0
+    return Math.abs(accountBalance(selectedAccount, transactions))
+  }, [selectedAccount, transactions])
+
+  // Payoff calculations
+  const payoff = useMemo(() => {
+    if (!selectedTerms) return { originalPrincipal: 0, paidPrincipal: 0, percentPaid: 0 }
+    const originalPrincipal = selectedTerms.principalMinor
+    const paidPrincipal = Math.max(0, originalPrincipal - currentBalanceMinor)
+    const percentPaid = originalPrincipal > 0 ? Math.min(100, Math.round((paidPrincipal / originalPrincipal) * 100)) : 0
+    return { originalPrincipal, paidPrincipal, percentPaid }
+  }, [selectedTerms, currentBalanceMinor])
+
   const handleRecordEmi = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !selectedAccount || !selectedTerms || !payingAccountId) return
 
     // Find the next unpaid installment
-    const installmentIndex = 0 // first row of schedule
+    const installmentIndex = 0
     const installment = schedule[installmentIndex]
     if (!installment) return
 
@@ -98,195 +139,258 @@ export default function LoansScreen() {
     if (!user || !loanName.trim() || !principalStr.trim()) return
 
     const principalMinor = parseAmountToMinor(principalStr, baseCurrency)
-    const annualRatePercent = parseFloat(rateStr) || 0
-    const annualRateBps = percentToBps(annualRatePercent)
+    const ratePercent = parseFloat(rateStr) || 0
+    const rateBps = percentToBps(ratePercent)
     const tenure = parseInt(tenureMonths, 10) || 12
-    const pDay = parseInt(paymentDay, 10) || 1
+    const payDay = parseInt(paymentDay, 10) || 1
+    const today = new Date().toISOString().substring(0, 10)
 
-    const emiMinor = computeReducingEmi(principalMinor, annualRateBps, tenure)
+    // Compute monthly EMI
+    const emiMinor = computeReducingEmi(principalMinor, rateBps, tenure)
 
-    // 1. Create account
-    const account = await accountRepo.create({
+    // 1. Create the loan Account
+    const createdAccount = await accountRepo.create({
       userId: user.id,
       name: loanName.trim(),
       kind: 'loan',
       currency: baseCurrency,
-      openingBalanceMinor: direction === 'borrowed' ? -principalMinor : principalMinor,
-      openingDate: new Date().toISOString().substring(0, 10),
+      openingBalanceMinor: -principalMinor, // Debt is negative balance
+      openingDate: today,
       creditLimitMinor: null,
       statementDay: null,
-      dueDay: pDay,
-      note: null,
+      dueDay: payDay,
       excludeFromNetWorth: false,
-      icon: 'Building',
-      color: '#6366f1',
-      sortOrder: accounts?.length ?? 0,
+      icon: null,
+      color: null,
+      sortOrder: (accounts?.length ?? 0) + 1,
       archivedAt: null,
+      note: null,
     })
 
-    // 2. Save loan terms
-    await accountRepo.saveLoanTerms({
-      accountId: account.id,
+    // 2. Create the associated LoanTerms
+    const newTerms: LoanTerms = {
+      id: crypto.randomUUID(),
       userId: user.id,
+      accountId: createdAccount.id,
       direction,
-      principalMinor,
-      annualRateBps,
-      rateType: 'reducing',
-      tenureMonths: tenure,
-      startDate: new Date().toISOString().substring(0, 10),
-      paymentDay: pDay,
-      emiMinor,
       counterparty: null,
+      principalMinor,
+      annualRateBps: rateBps,
+      tenureMonths: tenure,
+      startDate: today,
+      emiMinor,
+      paymentDay: payDay,
       interestCategoryId: null,
-    })
+      rateType: 'reducing',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+      serverSeq: null,
+      version: 1,
+    }
+
+    await db.loanTerms.add(newTerms)
 
     setIsNewLoanOpen(false)
-    setSelectedAccountId(account.id)
+    setLoanName('')
+    setPrincipalStr('')
+    setSelectedAccountId(createdAccount.id)
   }
 
-  const regularAccounts = (accounts ?? []).filter((a) => a.kind !== 'loan' && a.kind !== 'credit_card')
+  if (isLoading) {
+    return (
+      <Page width="default" className="space-y-6">
+        <SkeletonCard className="h-48" />
+        <SkeletonCard className="h-32" />
+      </Page>
+    )
+  }
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-5xl mx-auto">
+    <Page width="default" className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">{t('loans.title', 'Loans & Debts')}</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            {t('loans.subtitle', 'Track borrowed/lent loans, amortization schedules, and EMI payments')}
-          </p>
-        </div>
-
-        <Button
-          variant="primary"
-          leftIcon={<Plus size={16} />}
-          onClick={() => setIsNewLoanOpen(true)}
-        >
-          {t('loans.newLoan', 'Add Loan / Debt')}
-        </Button>
-      </div>
+      <PageHeader
+        title={t('nav.loans', 'Loans & Debt')}
+        subtitle="Track mortgages, personal loans, EMI schedules, and payoff progress"
+        actions={
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus size={16} />}
+            onClick={() => setIsNewLoanOpen(true)}
+          >
+            New Loan
+          </Button>
+        }
+      />
 
       {loanAccounts.length === 0 ? (
-        <Card className="py-16 text-center text-text-muted">
-          <p className="text-base font-medium">{t('loans.noLoans', 'No active loans or debts.')}</p>
-          <p className="text-xs mt-1">
-            {t('loans.createHint', 'Add home loans, personal loans, vehicle finance, or money lent to friends.')}
-          </p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={() => setIsNewLoanOpen(true)}>
-            {t('loans.newLoan', 'Add Loan / Debt')}
-          </Button>
-        </Card>
+        <EmptyState
+          icon={<Building size={28} />}
+          title="No active loans"
+          description="Track home loans, car loans, education debt, or money lent to friends with full amortization schedules."
+          actionLabel="New Loan"
+          onAction={() => setIsNewLoanOpen(true)}
+        />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Loan Selector & Summary */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              {loanAccounts.map((acc) => {
-                const terms = loanTerms?.find((l) => l.accountId === acc.id)
-                const isSelected = selectedAccount?.id === acc.id
-
-                return (
-                  <Card
-                    key={acc.id}
-                    onClick={() => setSelectedAccountId(acc.id)}
-                    className={`cursor-pointer transition-all p-4 ${
-                      isSelected
-                        ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
-                        : 'hover:border-primary/40'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold text-text text-sm">{acc.name}</h4>
-                      <Badge variant={terms?.direction === 'lent' ? 'success' : 'danger'} size="sm">
-                        {terms?.direction === 'lent' ? 'Lent' : 'Borrowed'}
-                      </Badge>
-                    </div>
-                    {terms && (
-                      <div className="mt-2 text-xs text-text-muted flex justify-between">
-                        <span>EMI: {formatMoney(terms.emiMinor ?? 0, acc.currency, locale)}</span>
-                        <span>{(terms.annualRateBps / 100).toFixed(1)}% APR</span>
-                      </div>
-                    )}
-                  </Card>
-                )
-              })}
+        <div className="space-y-6">
+          {/* Loan Account Switcher Pills */}
+          {loanAccounts.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+              {loanAccounts.map((acc) => (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => setSelectedAccountId(acc.id)}
+                  className={cn(
+                    'px-4 py-2 rounded-xl text-xs font-semibold border transition-all shrink-0',
+                    selectedAccount?.id === acc.id
+                      ? 'border-primary bg-primary/10 text-primary shadow-xs'
+                      : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay',
+                  )}
+                >
+                  {acc.name}
+                </button>
+              ))}
             </div>
+          )}
 
-            {selectedAccount && selectedTerms && (
-              <Card className="p-4 space-y-3 bg-surface-elevated">
-                <CardTitle className="text-sm">{t('loans.loanSummary', 'Loan Overview')}</CardTitle>
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">{t('loans.principal', 'Principal')}</span>
-                    <span className="font-bold text-text">
-                      {formatMoney(selectedTerms.principalMinor, selectedAccount.currency, locale)}
+          {selectedAccount && selectedTerms && (
+            <>
+              {/* Hero Payoff Progress Card */}
+              <Card variant="hero" className="p-6 sm:p-7 rounded-3xl relative overflow-hidden space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block">
+                      Outstanding Principal
+                    </span>
+                    <Amount
+                      minor={currentBalanceMinor}
+                      currency={selectedAccount.currency}
+                      tone="danger"
+                      showSign={false}
+                      size="display"
+                      className="font-extrabold block mt-1"
+                    />
+                    <span className="text-xs text-text-muted mt-1 block">
+                      Original: {formatMoney(selectedTerms.principalMinor, selectedAccount.currency, locale)} •{' '}
+                      {(selectedTerms.annualRateBps / 100).toFixed(2)}% p.a.
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">{t('loans.rate', 'Interest Rate')}</span>
-                    <span className="font-bold text-text">{(selectedTerms.annualRateBps / 100).toFixed(1)}% ({selectedTerms.rateType})</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">{t('loans.tenure', 'Tenure')}</span>
-                    <span className="font-bold text-text">{selectedTerms.tenureMonths} months</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">{t('loans.monthlyEmi', 'Monthly EMI')}</span>
-                    <span className="font-bold text-primary">
-                      {formatMoney(selectedTerms.emiMinor ?? 0, selectedAccount.currency, locale)}
-                    </span>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<CheckCircle2 size={16} />}
+                      onClick={() => {
+                        const bankAccounts = accounts?.filter((a) => a.kind !== 'loan')
+                        if (bankAccounts && bankAccounts.length > 0 && !payingAccountId) {
+                          setPayingAccountId(bankAccounts[0]!.id)
+                        }
+                        setIsRecordEmiOpen(true)
+                      }}
+                    >
+                      Record EMI Payment
+                    </Button>
                   </div>
                 </div>
 
-                <Button
-                  variant="primary"
-                  className="w-full mt-2"
-                  onClick={() => {
-                    if (regularAccounts.length > 0) setPayingAccountId(regularAccounts[0]!.id)
-                    setIsRecordEmiOpen(true)
-                  }}
-                >
-                  {t('loans.recordEmi', 'Record EMI Payment')}
-                </Button>
-              </Card>
-            )}
-          </div>
+                {/* Payoff Progress */}
+                <div className="space-y-2 pt-2 border-t border-border/40">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-text-muted font-medium">Payoff Progress</span>
+                    <span className="font-bold text-text">{payoff.percentPaid}% paid off</span>
+                  </div>
+                  <ProgressBar
+                    value={payoff.percentPaid}
+                    max={100}
+                    tone="primary"
+                    size="md"
+                  />
+                  <div className="flex justify-between text-[11px] text-text-muted">
+                    <span>Paid: {formatMoney(payoff.paidPrincipal, selectedAccount.currency, locale)}</span>
+                    <span>Remaining: {formatMoney(currentBalanceMinor, selectedAccount.currency, locale)}</span>
+                  </div>
+                </div>
 
-          {/* Right Column (2 cols): Amortization Schedule */}
-          <div className="lg:col-span-2">
-            <Card className="p-0 overflow-hidden">
-              <CardHeader className="p-4">
-                <CardTitle className="text-sm">{t('loans.amortizationSchedule', 'Amortization Schedule')}</CardTitle>
-                <span className="text-xs text-text-muted">{schedule.length} installments</span>
-              </CardHeader>
-              <div className="max-h-[500px] overflow-y-auto">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-surface-overlay text-text-muted sticky top-0 uppercase tracking-wider text-[10px]">
-                    <tr>
-                      <th className="p-3">#</th>
-                      <th className="p-3">Due Date</th>
-                      <th className="p-3">Principal</th>
-                      <th className="p-3">Interest</th>
-                      <th className="p-3">EMI</th>
-                      <th className="p-3 text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50 text-text">
-                    {schedule.slice(0, 36).map((inst) => (
-                      <tr key={inst.installmentNumber} className="hover:bg-surface-overlay/50">
-                        <td className="p-3 font-semibold">{inst.installmentNumber}</td>
-                        <td className="p-3 text-text-muted">{inst.dueDate}</td>
-                        <td className="p-3">{formatMoney(inst.principalPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}</td>
-                        <td className="p-3 text-danger">{formatMoney(inst.interestPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}</td>
-                        <td className="p-3 font-bold">{formatMoney(inst.emiMinor, selectedAccount?.currency ?? baseCurrency, locale)}</td>
-                        <td className="p-3 text-right font-medium">{formatMoney(inst.outstandingAfterMinor, selectedAccount?.currency ?? baseCurrency, locale)}</td>
+                {/* Next Payment info */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-3 border-t border-border/40 text-xs">
+                  <div>
+                    <span className="text-text-muted block">Monthly EMI</span>
+                    <Amount
+                      minor={selectedTerms.emiMinor ?? 0}
+                      currency={selectedAccount.currency}
+                      tone="neutral"
+                      showSign={false}
+                      className="font-bold text-sm text-text block mt-0.5"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-text-muted block">Payment Day</span>
+                    <span className="font-bold text-sm text-text block mt-0.5">
+                      {selectedTerms.paymentDay}th of month
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted block">Remaining Tenure</span>
+                    <span className="font-bold text-sm text-text block mt-0.5">
+                      {schedule.length} months
+                    </span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Amortization Schedule Preview */}
+              <Card className="p-5 space-y-4 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-text">Amortization Schedule</h3>
+                  <span className="text-xs text-text-muted">{schedule.length} installments</span>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar -mx-5 px-5">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border/60 text-text-muted uppercase text-[10px] tracking-wider">
+                        <th className="py-2.5 pr-3">#</th>
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">EMI</th>
+                        <th className="py-2.5 px-3">Principal</th>
+                        <th className="py-2.5 px-3">Interest</th>
+                        <th className="py-2.5 pl-3 text-right">Balance</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-border/30">
+                      {schedule.slice(0, 12).map((row) => (
+                        <tr key={row.installmentNumber} className="hover:bg-surface-overlay/40 transition-colors">
+                          <td className="py-2.5 pr-3 font-semibold text-text">{row.installmentNumber}</td>
+                          <td className="py-2.5 px-3 text-text-muted">{row.dueDate}</td>
+                          <td className="py-2.5 px-3 font-bold text-text">
+                            {formatMoney(row.emiMinor, selectedAccount.currency, locale)}
+                          </td>
+                          <td className="py-2.5 px-3 text-success font-medium">
+                            {formatMoney(row.principalPartMinor, selectedAccount.currency, locale)}
+                          </td>
+                          <td className="py-2.5 px-3 text-danger font-medium">
+                            {formatMoney(row.interestPartMinor, selectedAccount.currency, locale)}
+                          </td>
+                          <td className="py-2.5 pl-3 text-right text-text-muted">
+                            {formatMoney(row.outstandingAfterMinor, selectedAccount.currency, locale)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {schedule.length > 12 && (
+                  <p className="text-center text-[11px] text-text-muted pt-1">
+                    Showing first 12 of {schedule.length} installments
+                  </p>
+                )}
+              </Card>
+            </>
+          )}
         </div>
       )}
 
@@ -294,65 +398,70 @@ export default function LoansScreen() {
       <Modal
         isOpen={isRecordEmiOpen}
         onClose={() => setIsRecordEmiOpen(false)}
-        title={t('loans.recordEmiTitle', 'Record EMI')}
-        description={t(
-          'loans.recordEmiDesc',
-          'This will record a transfer for the principal and an expense for the interest part.',
-        )}
+        title="Record EMI Installment"
       >
-        <form onSubmit={handleRecordEmi} className="space-y-4">
-          <Select
-            label={t('loans.payingAccount', 'Paying Bank / Account')}
-            value={payingAccountId}
-            onChange={(e) => setPayingAccountId(e.target.value)}
-            required
-            options={regularAccounts.map((a) => ({ value: a.id, label: a.name }))}
-          />
-
-          {schedule.length > 0 && (
-            <div className="p-3 bg-surface rounded-xl border border-border space-y-2 text-xs">
+        <form onSubmit={handleRecordEmi} className="space-y-4 py-1">
+          {schedule[0] && (
+            <div className="p-3 bg-surface-overlay/50 rounded-xl space-y-1.5 text-xs border border-border/40">
               <div className="flex justify-between">
-                <span className="text-text-muted">Principal Part:</span>
-                <span className="font-semibold text-text">
-                  {formatMoney(schedule[0]!.principalPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}
+                <span className="text-text-muted">EMI Amount:</span>
+                <span className="font-bold text-text">
+                  {formatMoney(schedule[0].emiMinor, selectedAccount?.currency ?? baseCurrency, locale)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-muted">Interest Part:</span>
-                <span className="font-semibold text-danger">
-                  {formatMoney(schedule[0]!.interestPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}
+                <span className="text-text-muted">Principal Component:</span>
+                <span className="font-medium text-success">
+                  {formatMoney(schedule[0].principalPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}
                 </span>
               </div>
-              <div className="flex justify-between pt-1 border-t border-border font-bold text-sm">
-                <span>Total EMI:</span>
-                <span className="text-primary">
-                  {formatMoney(schedule[0]!.emiMinor, selectedAccount?.currency ?? baseCurrency, locale)}
+              <div className="flex justify-between">
+                <span className="text-text-muted">Interest Component:</span>
+                <span className="font-medium text-danger">
+                  {formatMoney(schedule[0].interestPartMinor, selectedAccount?.currency ?? baseCurrency, locale)}
                 </span>
               </div>
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsRecordEmiOpen(false)}>
+          <Select
+            label="Paid from Account"
+            value={payingAccountId}
+            onChange={(e) => setPayingAccountId(e.target.value)}
+            required
+            options={
+              accounts
+                ?.filter((a) => a.kind !== 'loan')
+                .map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` })) ?? []
+            }
+          />
+
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsRecordEmiOpen(false)}
+            >
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary">
-              {t('loans.confirmEmi', 'Confirm EMI Payment')}
+            <Button type="submit" variant="primary" className="flex-1">
+              Confirm Payment
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Add Loan Modal */}
+      {/* New Loan Modal */}
       <Modal
         isOpen={isNewLoanOpen}
         onClose={() => setIsNewLoanOpen(false)}
-        title={t('loans.newLoanTitle', 'Add Loan / Debt')}
+        title="Add New Loan"
       >
-        <form onSubmit={handleCreateLoan} className="space-y-4">
+        <form onSubmit={handleCreateLoan} className="space-y-4 py-1">
           <Input
-            label={t('loans.loanName', 'Loan / Counterparty Name')}
-            placeholder="e.g. HDFC Home Loan, Lent to Aman"
+            label="Loan / Debt Name"
+            placeholder="e.g. HDFC Home Loan, Car Loan"
             value={loanName}
             onChange={(e) => setLoanName(e.target.value)}
             required
@@ -360,19 +469,20 @@ export default function LoansScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t('loans.direction', 'Direction')}
+              label="Direction"
               value={direction}
               onChange={(e) => setDirection(e.target.value as 'borrowed' | 'lent')}
               options={[
                 { value: 'borrowed', label: 'Borrowed (I owe)' },
-                { value: 'lent', label: 'Lent (They owe me)' },
+                { value: 'lent', label: 'Lent (Someone owes me)' },
               ]}
             />
+
             <Input
               type="text"
               inputMode="decimal"
-              label={t('loans.principal', 'Principal Amount')}
-              placeholder="e.g. 500000"
+              label="Principal Amount"
+              placeholder="0.00"
               value={principalStr}
               onChange={(e) => setPrincipalStr(e.target.value)}
               required
@@ -381,43 +491,48 @@ export default function LoansScreen() {
 
           <div className="grid grid-cols-3 gap-3">
             <Input
-              type="text"
-              inputMode="decimal"
-              label={t('loans.annualRate', 'Interest %')}
+              type="number"
+              step="0.01"
+              label="Interest % p.a."
               value={rateStr}
               onChange={(e) => setRateStr(e.target.value)}
               required
             />
+
             <Input
               type="number"
-              min="1"
-              max="360"
-              label={t('loans.tenureMonths', 'Months')}
+              label="Tenure (Months)"
               value={tenureMonths}
               onChange={(e) => setTenureMonths(e.target.value)}
               required
             />
+
             <Input
               type="number"
               min="1"
-              max="31"
-              label={t('loans.paymentDay', 'Day (1-31)')}
+              max="28"
+              label="Payment Day"
               value={paymentDay}
               onChange={(e) => setPaymentDay(e.target.value)}
               required
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsNewLoanOpen(false)}>
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsNewLoanOpen(false)}
+            >
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary">
-              {t('common.save', 'Save Loan')}
+            <Button type="submit" variant="primary" className="flex-1">
+              Create Loan
             </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   )
 }

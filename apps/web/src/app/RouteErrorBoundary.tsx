@@ -29,8 +29,8 @@ export function RouteErrorBoundary() {
   }
 
   return (
-    <div className="min-h-screen bg-surface flex items-center justify-center p-4">
-      <div className="w-full max-w-md p-6 bg-surface-elevated border border-border rounded-2xl shadow-xl text-center">
+    <div className="min-h-dvh bg-surface flex items-center justify-center p-4">
+      <div className="w-full max-w-md p-6 sm:p-8 bg-surface-elevated border border-border/60 rounded-3xl shadow-xl text-center">
         <div className="w-14 h-14 bg-danger/10 text-danger rounded-2xl flex items-center justify-center mx-auto mb-4">
           <AlertTriangle size={28} />
         </div>

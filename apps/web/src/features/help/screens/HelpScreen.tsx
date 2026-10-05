@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardHeader, CardTitle, CardContent, Button, Logo, BrandName, Avatar } from '../../../ui'
+import { Page, PageHeader, Card, CardHeader, CardTitle, CardContent, Button, Logo, BrandName, Avatar } from '../../../ui'
 import { HelpCircle, Shield, FileText, Info, ChevronDown, ChevronUp, Github, Globe, Mail } from 'lucide-react'
 
 export default function HelpScreen() {
@@ -32,13 +32,11 @@ export default function HelpScreen() {
   ]
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-text">{t('help.title', 'Help & Information')}</h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          Guides, privacy commitment, and legal terms
-        </p>
-      </div>
+    <Page width="narrow" className="space-y-6">
+      <PageHeader
+        title={t('help.title', 'Help & Information')}
+        subtitle="Guides, privacy commitment, and legal terms"
+      />
 
       {/* Tabs */}
       <div className="flex bg-surface-elevated border border-border rounded-xl p-1 overflow-x-auto no-scrollbar">
@@ -57,7 +55,7 @@ export default function HelpScreen() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                 isActive
-                  ? 'bg-primary text-white shadow-xs'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'text-text-muted hover:text-text hover:bg-surface-overlay'
               }`}
             >
@@ -191,6 +189,6 @@ export default function HelpScreen() {
           </div>
         </Card>
       )}
-    </div>
+    </Page>
   )
 }

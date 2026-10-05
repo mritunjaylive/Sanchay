@@ -6,11 +6,34 @@ import { budgetRepo } from '../../../db/repositories/budgetRepo'
 import { useAuthStore } from '../../auth/stores/authStore'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { calculateBudgetStatus, getEffectiveBudget } from '../../../domain/budgets'
-import { addOneMonth, subtractOneMonth } from '../../../domain/dates'
+import { addOneMonth, subtractOneMonth, periodFor } from '../../../domain/dates'
 import { formatMoney, parseAmountToMinor } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Modal, Badge } from '../../../ui'
-import { Plus, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
-import type { Budget } from '@sanchay/shared'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Select,
+  Modal,
+  Badge,
+  Amount,
+  ProgressBar,
+  ProgressRing,
+  CategoryIcon,
+  EmptyState,
+  SkeletonCard,
+} from '../../../ui'
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  PiggyBank,
+  PieChart,
+} from 'lucide-react'
+import type { Budget, Category } from '@sanchay/shared'
+import { cn } from '../../../lib/cn'
 
 export default function BudgetsScreen() {
   const { t } = useTranslation()
@@ -18,8 +41,8 @@ export default function BudgetsScreen() {
   const { baseCurrency, locale } = useSettingsStore()
   const monthStartDay = useAuthStore((s) => s.profile?.monthStartDay) ?? 1
 
-  const todayStr = new Date().toISOString().substring(0, 10)
-  const [currentMonth, setCurrentMonth] = useState(todayStr.substring(0, 7)) // YYYY-MM
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), [])
+  const [currentMonth, setCurrentMonth] = useState(() => todayStr.substring(0, 7)) // YYYY-MM
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
 
@@ -34,10 +57,12 @@ export default function BudgetsScreen() {
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
+  const isLoading = allBudgets === undefined || categories === undefined || transactions === undefined
+
   const uniqueExpenseCategories = useMemo(() => {
     if (!categories) return []
     const seen = new Set<string>()
-    const list: typeof categories = []
+    const list: Category[] = []
     for (const c of categories) {
       if (user?.id && c.userId && c.userId !== user.id) continue
       if (c.kind !== 'expense') continue
@@ -51,8 +76,8 @@ export default function BudgetsScreen() {
   }, [categories, user?.id])
 
   const categoryMap = useMemo(() => {
-    const map = new Map<string, string>()
-    categories?.forEach((c) => map.set(c.id, c.name))
+    const map = new Map<string, Category>()
+    categories?.forEach((c) => map.set(c.id, c))
     return map
   }, [categories])
 
@@ -83,6 +108,46 @@ export default function BudgetsScreen() {
       ),
     )
   }, [allBudgets, transactions, currentMonth, monthStartDay, todayStr])
+
+  // Aggregate stats across all budgets
+  const aggregate = useMemo(() => {
+    if (activeBudgetStatuses.length === 0) return null
+
+    let totalBudgetMinor = 0
+    let totalSpentMinor = 0
+
+    // If there is an overall budget, use it as total budget
+    const overallItem = activeBudgetStatuses.find((item) => item.budget.categoryId === null)
+    if (overallItem) {
+      totalBudgetMinor = overallItem.budget.amountMinor + overallItem.rolloverAmountMinor
+      totalSpentMinor = overallItem.spentMinor
+    } else {
+      for (const item of activeBudgetStatuses) {
+        totalBudgetMinor += item.budget.amountMinor + item.rolloverAmountMinor
+        totalSpentMinor += item.spentMinor
+      }
+    }
+
+    const remainingMinor = Math.max(0, totalBudgetMinor - totalSpentMinor)
+    const percentUsed = totalBudgetMinor > 0 ? Math.round((totalSpentMinor / totalBudgetMinor) * 100) : 0
+
+    // Days left in current period
+    const { end: monthEnd } = periodFor(`${currentMonth}-01`, monthStartDay)
+    const today = new Date(todayStr)
+    const end = new Date(monthEnd)
+    const diffTime = end.getTime() - today.getTime()
+    const daysLeft = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1)
+    const dailyMinor = Math.round(remainingMinor / daysLeft)
+
+    return {
+      totalBudgetMinor,
+      totalSpentMinor,
+      remainingMinor,
+      percentUsed,
+      daysLeft,
+      dailyMinor,
+    }
+  }, [activeBudgetStatuses, currentMonth, monthStartDay, todayStr])
 
   const openCreateModal = () => {
     setEditingBudget(null)
@@ -136,174 +201,311 @@ export default function BudgetsScreen() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <Page width="default" className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-32 bg-surface-elevated animate-pulse rounded-lg" />
+          <div className="h-9 w-28 bg-surface-elevated animate-pulse rounded-xl" />
+        </div>
+        <SkeletonCard className="h-44" />
+        <SkeletonCard className="h-32" />
+        <SkeletonCard className="h-32" />
+      </Page>
+    )
+  }
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-6 pb-20">
       {/* Header & Month Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">{t('budgets.title', 'Budgets')}</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            {t('budgets.subtitle', 'Track category spending limits and monitor rollovers')}
-          </p>
-        </div>
+      <PageHeader
+        title={t('budgets.title', 'Budgets')}
+        subtitle={t('budgets.subtitle', 'Track category spending limits and monitor rollovers')}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Month Navigation */}
+            <div className="flex items-center gap-1 bg-surface-elevated border border-border/80 rounded-xl p-1 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setCurrentMonth(subtractOneMonth(currentMonth))}
+                className="p-1 rounded-lg text-text-muted hover:text-text hover:bg-surface-overlay transition-colors"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="px-2 text-xs font-bold text-text min-w-[70px] text-center">
+                {currentMonth}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentMonth(addOneMonth(currentMonth))}
+                className="p-1 rounded-lg text-text-muted hover:text-text hover:bg-surface-overlay transition-colors"
+                aria-label="Next month"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* Month Navigation */}
-          <div className="flex items-center gap-1 bg-surface-elevated border border-border rounded-lg p-1">
-            <button
-              type="button"
-              onClick={() => setCurrentMonth(subtractOneMonth(currentMonth))}
-              className="p-1 rounded text-text-muted hover:text-text hover:bg-surface-overlay"
-              aria-label="Previous month"
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus size={16} />}
+              onClick={openCreateModal}
             >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="px-3 text-xs font-bold text-text min-w-[70px] text-center">
-              {currentMonth}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCurrentMonth(addOneMonth(currentMonth))}
-              className="p-1 rounded text-text-muted hover:text-text hover:bg-surface-overlay"
-              aria-label="Next month"
-            >
-              <ChevronRight size={18} />
-            </button>
+              {t('budgets.setBudget', 'Set Budget')}
+            </Button>
           </div>
+        }
+      />
 
-          <Button variant="primary" leftIcon={<Plus size={16} />} onClick={openCreateModal}>
-            {t('budgets.setBudget', 'Set Budget')}
-          </Button>
-        </div>
-      </div>
+      {/* Top Overall Budget Ring Hero Card */}
+      {aggregate && (
+        <Card variant="hero" className="p-6 sm:p-7 rounded-3xl relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block">
+                {t('budgets.overallBudget', 'Total Budget Overview')}
+              </span>
+              <div className="flex items-baseline gap-2">
+                <Amount
+                  minor={aggregate.remainingMinor}
+                  currency={baseCurrency}
+                  showSign={false}
+                  size="display"
+                  className="font-extrabold text-text"
+                />
+                <span className="text-sm font-semibold text-text-muted">
+                  {t('budget.remaining', 'remaining')}
+                </span>
+              </div>
+
+              <p className="text-xs text-text-muted">
+                <Amount
+                  minor={aggregate.dailyMinor}
+                  currency={baseCurrency}
+                  showSign={false}
+                  className="font-semibold inline text-xs text-text"
+                />{' '}
+                / day for {aggregate.daysLeft} days left in cycle
+              </p>
+
+              <div className="flex items-center gap-4 text-xs pt-1">
+                <span>
+                  Budget:{' '}
+                  <Amount
+                    minor={aggregate.totalBudgetMinor}
+                    currency={baseCurrency}
+                    showSign={false}
+                    className="font-bold inline text-xs text-text"
+                  />
+                </span>
+                <span>•</span>
+                <span>
+                  Spent:{' '}
+                  <Amount
+                    minor={aggregate.totalSpentMinor}
+                    currency={baseCurrency}
+                    tone="danger"
+                    showSign={false}
+                    className="font-bold inline text-xs"
+                  />
+                </span>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex items-center justify-center">
+              <ProgressRing
+                value={aggregate.percentUsed}
+                size={84}
+                strokeWidth={7}
+                tone={
+                  aggregate.percentUsed > 100
+                    ? 'danger'
+                    : aggregate.percentUsed > 80
+                    ? 'warning'
+                    : 'primary'
+                }
+              >
+                <div className="text-center">
+                  <span className="text-sm font-extrabold text-text block">
+                    {aggregate.percentUsed}%
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted block">
+                    used
+                  </span>
+                </div>
+              </ProgressRing>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Budgets List */}
       {activeBudgetStatuses.length === 0 ? (
-        <Card className="py-16 text-center text-text-muted">
-          <p className="text-base font-medium">{t('budgets.noBudgets', 'No budgets set for this month.')}</p>
-          <p className="text-xs mt-1">
-            {t('budgets.createHint', 'Create category spending caps to control expenses.')}
-          </p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={openCreateModal}>
-            {t('budgets.setBudget', 'Set Budget')}
-          </Button>
-        </Card>
+        <EmptyState
+          icon={<PieChart size={28} />}
+          title={t('budgets.noBudgets', 'No budgets set for this month')}
+          description={t(
+            'budgets.createHint',
+            'Create category spending caps to control expenses and save more.',
+          )}
+          actionLabel={t('budgets.setBudget', 'Set Budget')}
+          onAction={openCreateModal}
+        />
       ) : (
         <div className="space-y-4">
           {activeBudgetStatuses.map((item) => {
             const isOverall = item.budget.categoryId === null
-            const title = isOverall ? t('budgets.overallBudget', 'Overall Budget') : categoryMap.get(item.budget.categoryId!) ?? 'Category'
+            const category = item.budget.categoryId ? categoryMap.get(item.budget.categoryId) : undefined
+            const title = isOverall
+              ? t('budgets.overallBudget', 'Overall Budget')
+              : category?.name ?? 'Category'
+
             const isOver = item.status === 'over'
             const isWarning = item.status === 'warning'
+            const tone = isOver ? 'danger' : isWarning ? 'warning' : 'primary'
+
+            const remainingMinor = Math.max(0, item.budget.amountMinor + item.rolloverAmountMinor - item.spentMinor)
 
             return (
-              <Card key={item.budget.id} className="p-5 space-y-3">
+              <Card key={item.budget.id} className="p-5 space-y-4 rounded-2xl border-border/60">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-text">{title}</h3>
-                      {item.budget.rollover && (
-                        <Badge variant="neutral" size="sm" title="Rollover enabled">
-                          <RotateCcw size={10} className="mr-1" />
-                          <span>{t('budgets.rollover', 'Rollover')}</span>
-                        </Badge>
+                  <div className="flex items-center gap-3">
+                    <div className="shrink-0">
+                      {isOverall ? (
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                          <PieChart size={20} />
+                        </div>
+                      ) : (
+                        <CategoryIcon
+                          icon={category?.icon}
+                          color={category?.color}
+                          size="md"
+                        />
                       )}
-                      <Badge variant={isOver ? 'danger' : isWarning ? 'warning' : 'success'} size="sm">
-                        {item.percentUsed}%
-                      </Badge>
                     </div>
 
-                    {item.rolloverAmountMinor > 0 && (
-                      <p className="text-xs text-text-muted mt-0.5">
-                        +{formatMoney(item.rolloverAmountMinor, baseCurrency, locale)} {t('budgets.carriedOver', 'carried from last month')}
-                      </p>
-                    )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-text">{title}</h3>
+                        {item.budget.rollover && (
+                          <Badge variant="neutral" size="sm" title="Rollover enabled">
+                            <RotateCcw size={10} className="mr-1" />
+                            <span>{t('budgets.rollover', 'Rollover')}</span>
+                          </Badge>
+                        )}
+                        <Badge variant={isOver ? 'danger' : isWarning ? 'warning' : 'success'} size="sm">
+                          {item.percentUsed}%
+                        </Badge>
+                      </div>
+
+                      {item.rolloverAmountMinor > 0 && (
+                        <p className="text-xs text-text-muted mt-0.5">
+                          +{formatMoney(item.rolloverAmountMinor, baseCurrency, locale)}{' '}
+                          {t('budgets.carriedOver', 'carried from last month')}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleEdit(item.budget)}
-                      className="text-xs text-primary hover:underline font-semibold px-2 py-1"
+                      className="text-xs text-primary font-semibold"
                     >
                       {t('common.edit', 'Edit')}
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleDelete(item.budget.id)}
-                      className="text-xs text-danger hover:underline font-semibold px-2 py-1"
+                      className="text-xs text-danger font-semibold"
                     >
                       {t('common.delete', 'Delete')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="w-full h-3 bg-surface-overlay rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      isOver ? 'bg-danger' : isWarning ? 'bg-warning' : 'bg-primary'
-                    }`}
-                    style={{ width: `${Math.min(100, item.percentUsed)}%` }}
-                  />
-                </div>
+                <ProgressBar
+                  value={item.percentUsed}
+                  max={100}
+                  tone={tone}
+                />
 
-                {/* Stats Row */}
-                <div className="flex justify-between items-center text-xs text-text-muted pt-1">
-                  <span>
-                    {t('budgets.spent', 'Spent')}:{' '}
-                    <strong className="text-text">{formatMoney(item.spentMinor, baseCurrency, locale)}</strong>
+                {/* Spent / Limit & Remaining Info */}
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-border/30">
+                  <span className="text-text-muted">
+                    {isOver ? (
+                      <span className="text-danger font-semibold">
+                        Over budget by{' '}
+                        <Amount
+                          minor={item.spentMinor - (item.budget.amountMinor + item.rolloverAmountMinor)}
+                          currency={baseCurrency}
+                          tone="danger"
+                          showSign={false}
+                          className="font-bold inline text-xs"
+                        />
+                      </span>
+                    ) : (
+                      <span>
+                        <Amount
+                          minor={remainingMinor}
+                          currency={baseCurrency}
+                          showSign={false}
+                          className="font-bold inline text-xs text-text"
+                        />{' '}
+                        left
+                      </span>
+                    )}
                   </span>
-                  <span>
-                    {t('budgets.limit', 'Limit')}:{' '}
-                    <strong className="text-text">{formatMoney(item.totalAllowedMinor, baseCurrency, locale)}</strong>
-                  </span>
-                  <span>
-                    {t('budgets.remaining', 'Remaining')}:{' '}
-                    <strong className={item.remainingMinor < 0 ? 'text-danger' : 'text-success'}>
-                      {formatMoney(item.remainingMinor, baseCurrency, locale)}
-                    </strong>
-                  </span>
-                </div>
 
-                {/* Daily allowance if positive remaining and inside current month */}
-                {item.dailyAllowanceMinor > 0 && currentMonth === todayStr.substring(0, 7) && (
-                  <div className="pt-2 border-t border-border/50 text-[11px] text-text-muted flex items-center justify-between">
-                    <span>{t('budgets.dailyAllowance', 'Daily allowance to stay on track:')}</span>
-                    <span className="font-semibold text-text">
-                      {formatMoney(item.dailyAllowanceMinor, baseCurrency, locale)} / day
-                    </span>
+                  <div className="flex items-center gap-1.5 font-medium text-text-muted">
+                    <Amount
+                      minor={item.spentMinor}
+                      currency={baseCurrency}
+                      showSign={false}
+                      className="font-semibold inline text-xs text-text"
+                    />
+                    <span>/</span>
+                    <Amount
+                      minor={item.budget.amountMinor + item.rolloverAmountMinor}
+                      currency={baseCurrency}
+                      showSign={false}
+                      className="font-semibold inline text-xs text-text-muted"
+                    />
                   </div>
-                )}
+                </div>
               </Card>
             )
           })}
         </div>
       )}
 
-      {/* Set / Edit Budget Modal */}
+      {/* Add / Edit Budget Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingBudget ? t('budgets.editBudget', 'Edit Budget') : t('budgets.newBudget', 'Set New Budget')}
+        title={editingBudget ? t('budgets.editBudget', 'Edit Budget') : t('budgets.setBudget', 'Set Budget')}
       >
-        <form onSubmit={handleSave} className="space-y-4">
-          {!editingBudget && (
-            <Select
-              label={t('budgets.budgetFor', 'Budget Target')}
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              options={[
-                { value: 'overall', label: `★ ${t('budgets.overallBudget', 'Overall Budget (All Categories)')}` },
-                ...uniqueExpenseCategories.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-            />
-          )}
+        <form onSubmit={handleSave} className="space-y-4 py-1">
+          <Select
+            label={t('transaction.category', 'Category')}
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            disabled={Boolean(editingBudget)}
+            options={[
+              { value: 'overall', label: t('budgets.overallBudget', 'Overall (All Categories)') },
+              ...uniqueExpenseCategories.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
 
           <Input
             type="text"
             inputMode="decimal"
-            label={t('budgets.monthlyLimit', 'Monthly Amount Limit')}
+            label={t('transaction.amount', 'Monthly Budget Amount')}
             placeholder="e.g. 15000"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
@@ -311,38 +513,47 @@ export default function BudgetsScreen() {
           />
 
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              type="number"
-              min="50"
-              max="99"
-              label={t('budgets.alertThreshold', 'Warning Alert Threshold (%)')}
+            <Select
+              label="Alert Threshold"
               value={thresholdPercent}
               onChange={(e) => setThresholdPercent(e.target.value)}
+              options={[
+                { value: '50', label: '50%' },
+                { value: '70', label: '70%' },
+                { value: '80', label: '80%' },
+                { value: '90', label: '90%' },
+                { value: '100', label: '100%' },
+              ]}
             />
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="rolloverToggle"
-                checked={rollover}
-                onChange={(e) => setRollover(e.target.checked)}
-                className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-              />
-              <label htmlFor="rolloverToggle" className="text-sm font-medium text-text cursor-pointer select-none">
-                {t('budgets.rolloverUnused', 'Rollover unused money')}
+
+            <div className="flex items-center pt-6">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-text">
+                <input
+                  type="checkbox"
+                  checked={rollover}
+                  onChange={(e) => setRollover(e.target.checked)}
+                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <span>Rollover unused</span>
               </label>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsModalOpen(false)}
+            >
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" className="flex-1">
               {t('common.save', 'Save')}
             </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   )
 }

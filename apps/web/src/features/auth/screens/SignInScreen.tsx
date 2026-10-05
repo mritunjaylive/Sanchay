@@ -61,16 +61,16 @@ export default function SignInScreen() {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-surface-elevated border border-border rounded-2xl shadow-xl">
-      <div className="text-center mb-6">
-        <div className="flex justify-center mb-3">
-          <Logo size={52} className="shadow-md rounded-2xl" />
+    <div className="w-full max-w-md mx-auto p-2 sm:p-6 lg:p-0 space-y-6">
+      <div className="text-center lg:text-left mb-6">
+        <div className="flex justify-center lg:justify-start mb-3 lg:hidden">
+          <Logo size={48} className="shadow-md rounded-2xl" />
         </div>
-        <h1 className="text-3xl font-bold text-text">
-          <BrandName />
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-text">
+          {t('auth.welcomeBack', 'Welcome back')}
         </h1>
-        <p className="text-sm text-text-muted mt-1">{t('auth.signInSubtitle', 'Sign in to manage your finances')}</p>
-        <div className="flex justify-center mt-3">
+        <p className="text-sm text-text-muted mt-1">{t('auth.signInSubtitle', 'Sign in to access your offline-first financial accounts')}</p>
+        <div className="flex justify-center lg:justify-start mt-3">
           <LanguageSwitcher variant="buttons" />
         </div>
       </div>

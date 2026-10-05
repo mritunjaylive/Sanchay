@@ -1,12 +1,43 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-accent="teal">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
+  <!-- Theme & Accent Flash Prevention (Executes synchronously before React mounts) -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('sanchay-settings');
+        var theme = 'system';
+        var accent = 'teal';
+        if (stored) {
+          var parsed = JSON.parse(stored);
+          if (parsed && parsed.state) {
+            if (parsed.state.theme) theme = parsed.state.theme;
+            if (parsed.state.accent) accent = parsed.state.accent;
+          }
+        }
+        var isDark =
+          theme === 'dark' ||
+          (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        var validAccents = ['teal', 'blue', 'violet', 'rose', 'amber', 'emerald'];
+        var resolvedAccent = validAccents.indexOf(accent) !== -1 ? accent : 'teal';
+        document.documentElement.setAttribute('data-accent', resolvedAccent);
+      } catch (e) {
+        document.documentElement.setAttribute('data-accent', 'teal');
+      }
+    })();
+  </script>
+
   <!-- PWA meta tags -->
-  <meta name="theme-color" content="#10b981" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0F766E" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />

@@ -8,8 +8,9 @@ import { syncEngine } from '../../sync/services/syncEngine'
 import { profileRepo } from '../../../db/repositories/profileRepo'
 import { db } from '../../../db/db'
 import {
+  Page,
+  PageHeader,
   Card,
-  CardTitle,
   Button,
   Input,
   Select,
@@ -18,6 +19,7 @@ import {
   Avatar,
   Logo,
   BrandName,
+  SegmentedControl,
 } from '../../../ui'
 import { EditProfileModal } from '../../auth/components/EditProfileModal'
 import { fxService } from '../../fx/services/fxService'
@@ -38,8 +40,24 @@ import {
   User,
   Pencil,
   Check,
+  Palette,
+  Database,
+  Info,
+  ChevronRight,
 } from 'lucide-react'
 import type { Theme } from '@sanchay/shared'
+import type { Accent } from '../stores/settingsStore'
+
+const ACCENTS: Array<{ id: Accent; label: string; color: string }> = [
+  { id: 'teal', label: 'Teal', color: '#0F766E' },
+  { id: 'blue', label: 'Blue', color: '#2563EB' },
+  { id: 'violet', label: 'Violet', color: '#7C3AED' },
+  { id: 'rose', label: 'Rose', color: '#E11D48' },
+  { id: 'amber', label: 'Amber', color: '#D97706' },
+  { id: 'emerald', label: 'Emerald', color: '#059669' },
+]
+
+type SettingsTab = 'profile' | 'preferences' | 'security' | 'data' | 'account' | 'about'
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation()
@@ -53,6 +71,8 @@ export default function SettingsScreen() {
   const {
     theme,
     setTheme,
+    accent,
+    setAccent,
     locale,
     setLocale,
     baseCurrency,
@@ -61,6 +81,7 @@ export default function SettingsScreen() {
     setHideBalances,
   } = useSettingsStore()
 
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile')
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
 
   const displayName =
@@ -123,17 +144,14 @@ export default function SettingsScreen() {
       const oldCurrency = baseCurrency
       const newCurrency = pendingCurrency
 
-      // 1. Recompute all transaction base amounts
       await fxService.recomputeAllBaseAmounts(newCurrency, (processed, total) => {
         setConversionProgress({ processed, total })
       })
 
-      // 2. Convert budgets if requested
       if (shouldConvertBudgets) {
         await fxService.convertAllBudgets(oldCurrency, newCurrency)
       }
 
-      // 3. Update settings and profile
       setBaseCurrency(newCurrency)
       if (user) {
         await profileRepo.update(user.id, { baseCurrency: newCurrency })
@@ -158,7 +176,7 @@ export default function SettingsScreen() {
     try {
       localStorage.setItem('i18nextLng', lang)
     } catch {
-      // ignore localStorage quota errors
+      // ignore
     }
     await i18n.changeLanguage(lang)
     if (typeof document !== 'undefined') {
@@ -227,360 +245,477 @@ export default function SettingsScreen() {
     }
   }
 
+  const navItems = [
+    { id: 'profile' as const, label: t('settings.profile', 'Profile'), icon: User },
+    { id: 'preferences' as const, label: t('settings.preferences', 'Preferences'), icon: Palette },
+    { id: 'security' as const, label: t('settings.privacy', 'Security'), icon: Shield },
+    { id: 'data' as const, label: t('settings.syncAndData', 'Data & Sync'), icon: Database },
+    { id: 'account' as const, label: t('settings.accountSecurity', 'Account'), icon: LogOut },
+    { id: 'about' as const, label: t('settings.about', 'About'), icon: Info },
+  ]
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-text">{t('settings.title', 'Settings')}</h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          {t('settings.subtitle', 'Manage preferences, appearance, currency, and data')}
-        </p>
-      </div>
+    <Page width="default" className="space-y-6">
+      <PageHeader
+        title={t('settings.title', 'Settings')}
+        subtitle={t('settings.subtitle', 'Manage preferences, appearance, currency, and data')}
+      />
 
-      {/* Account & Profile Card */}
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <User size={18} className="text-primary" />
-            <span>{t('settings.profile', 'Account & Profile')}</span>
-          </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<Pencil size={13} />}
-            onClick={() => setIsEditProfileOpen(true)}
-          >
-            {t('settings.editProfile', 'Edit Profile')}
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-4 p-3.5 bg-surface rounded-xl border border-border">
-          <Avatar
-            src={avatarUrl}
-            name={displayName}
-            size="lg"
-            className="ring-2 ring-primary/30 shrink-0"
-          />
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-text truncate">{displayName}</h3>
-            <p className="text-xs text-text-muted truncate mt-0.5">
-              {user?.email || t('auth.offlineMode', 'Offline Account')}
-            </p>
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-              <Badge variant="neutral" size="sm" className="font-mono text-[10px]">
-                {profile?.baseCurrency || baseCurrency}
-              </Badge>
-              <Badge variant="neutral" size="sm" className="text-[10px]">
-                {currentLang === 'hi' ? 'हिन्दी (Hindi)' : 'English'}
-              </Badge>
-              {hasPin && (
-                <Badge variant="success" size="sm" className="text-[10px]">
-                  PIN Locked
-                </Badge>
-              )}
+      {/* Two-pane layout on desktop (Left navigation 4 cols, Right content 8 cols) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        {/* Navigation list */}
+        <div className="md:col-span-4 space-y-1">
+          {/* Mobile horizontal segmented control */}
+          <div className="md:hidden overflow-x-auto no-scrollbar -mx-1 px-1 pb-2">
+            <div className="inline-flex p-1 bg-surface-overlay/80 backdrop-blur-xs rounded-xl border border-border/50 gap-1">
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const isActive = activeTab === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveTab(item.id)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-text-muted hover:text-text hover:bg-surface-elevated/60'
+                    }`}
+                  >
+                    <Icon size={14} />
+                    <span>{item.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
-        </div>
-      </Card>
 
-      {/* Appearance */}
-      <Card className="space-y-4">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Sun size={18} className="text-primary" />
-          <span>{t('settings.appearance', 'Appearance & Theme')}</span>
-        </CardTitle>
-
-        <div className="grid grid-cols-3 gap-3">
-          {(['light', 'dark', 'system'] as Theme[]).map((thm) => (
-            <button
-              key={thm}
-              type="button"
-              onClick={() => setTheme(thm)}
-              className={`p-3 rounded-xl border flex flex-col items-center gap-2 font-medium text-xs transition-all ${
-                theme === thm
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
-              }`}
-            >
-              {thm === 'light' ? <Sun size={18} /> : thm === 'dark' ? <Moon size={18} /> : <Monitor size={18} />}
-              <span className="capitalize">{t(`settings.theme.${thm}`, thm)}</span>
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      {/* Language & Currency */}
-      <Card className="space-y-4">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Globe size={18} className="text-primary" />
-          <span>{t('settings.localization', 'Language & Currency')}</span>
-        </CardTitle>
-
-        {/* 1-Tap Language Selection Buttons */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-text">
-              {t('settings.language', 'App Language')}
-            </label>
-            <span className="text-[11px] text-text-muted">
-              {currentLang === 'hi' ? 'हिन्दी सक्रिय है' : 'English active'}
-            </span>
-          </div>
-          <p className="text-xs text-text-muted">
-            {t('settings.languageDesc', 'Select your preferred language for the entire application')}
-          </p>
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => handleLanguageChange('en')}
-              className={`p-3 rounded-xl border flex items-center justify-between gap-2 font-medium text-xs transition-all ${
-                currentLang === 'en'
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm font-semibold'
-                  : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base" role="img" aria-label="UK flag">🇬🇧</span>
-                <span>English</span>
-              </div>
-              {currentLang === 'en' && <Check size={16} className="text-primary shrink-0" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleLanguageChange('hi')}
-              className={`p-3 rounded-xl border flex items-center justify-between gap-2 font-medium text-xs transition-all ${
-                currentLang === 'hi'
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm font-semibold'
-                  : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base" role="img" aria-label="India flag">🇮🇳</span>
-                <span className="font-hindi text-sm">हिन्दी (Hindi)</span>
-              </div>
-              {currentLang === 'hi' && <Check size={16} className="text-primary shrink-0" />}
-            </button>
-          </div>
+          {/* Desktop vertical sidebar card */}
+          <Card className="hidden md:block p-2 rounded-2xl border border-border/60 divide-y divide-border/30">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = activeTab === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full text-left p-3 rounded-xl flex items-center justify-between text-xs font-bold transition-all ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-text-muted hover:text-text hover:bg-surface-overlay'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon size={16} className={isActive ? 'text-primary-foreground' : 'text-primary'} />
+                    <span>{item.label}</span>
+                  </div>
+                  <ChevronRight size={14} className={isActive ? 'text-primary-foreground/80' : 'text-text-muted/60'} />
+                </button>
+              )
+            })}
+          </Card>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          <Select
-            label={t('settings.language', 'Language')}
-            value={currentLang}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            options={[
-              { value: 'en', label: 'English' },
-              { value: 'hi', label: 'हिन्दी (Hindi)' },
-            ]}
-          />
-
-          <Select
-            label={t('settings.baseCurrency', 'Base Currency')}
-            value={baseCurrency}
-            onChange={(e) => {
-              if (e.target.value !== baseCurrency) {
-                setPendingCurrency(e.target.value)
-              }
-            }}
-            options={[
-              { value: 'INR', label: 'INR (₹) - Indian Rupee' },
-              { value: 'USD', label: 'USD ($) - US Dollar' },
-              { value: 'EUR', label: 'EUR (€) - Euro' },
-              { value: 'GBP', label: 'GBP (£) - British Pound' },
-              { value: 'AED', label: 'AED (د.إ) - UAE Dirham' },
-            ]}
-          />
-        </div>
-
-        <Input
-          type="number"
-          min="1"
-          max="28"
-          label={t('settings.monthStartDay', 'Month Start Day (1 to 28)')}
-          value={monthStartDay}
-          onChange={(e) => handleMonthStartChange(e.target.value)}
-          helperText={t('settings.monthStartHelper', 'Aligns monthly reports with your salary date (e.g. 1st or 25th)')}
-        />
-      </Card>
-
-      {/* Privacy & App Lock */}
-      <Card className="space-y-4">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Shield size={18} className="text-primary" />
-          <span>{t('settings.privacy', 'Privacy & Security')}</span>
-        </CardTitle>
-
-        <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border">
-          <div>
-            <span className="text-sm font-semibold text-text block">
-              {t('settings.hideBalances', 'Hide Account Balances')}
-            </span>
-            <span className="text-xs text-text-muted">
-              {t('settings.hideBalancesDesc', 'Mask balances on screens with dots (••••••) for privacy in public')}
-            </span>
-          </div>
-          <Button
-            variant={hideBalances ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setHideBalances(!hideBalances)}
-          >
-            {hideBalances ? <EyeOff size={16} /> : <Eye size={16} />}
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border">
-          <div>
-            <span className="text-sm font-semibold text-text block">
-              {t('settings.pinLock', 'PIN App Lock')}
-            </span>
-            <span className="text-xs text-text-muted">
-              {hasPin
-                ? t('settings.pinLockActive', 'PIN protection active • Locks when app is minimized or hidden.')
-                : t('settings.pinLockInactive', 'Require a 4 to 6-digit PIN to open the app.')}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasPin ? (
-              <>
+        {/* Content Pane */}
+        <div className="md:col-span-8 space-y-6">
+          {/* PROFILE SECTION */}
+          {activeTab === 'profile' && (
+            <Card className="p-6 rounded-3xl space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                <div className="flex items-center gap-2.5">
+                  <User size={18} className="text-primary" />
+                  <h2 className="text-base font-bold text-text">{t('settings.profile', 'Profile')}</h2>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setPinError(null)
-                    setNewPin('')
-                    setConfirmPin('')
-                    setIsPinModalOpen(true)
+                  leftIcon={<Pencil size={13} />}
+                  onClick={() => setIsEditProfileOpen(true)}
+                  className="h-8 text-xs"
+                >
+                  {t('settings.editProfile', 'Edit Profile')}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-4 p-4 bg-surface-elevated rounded-2xl border border-border/50">
+                <Avatar
+                  src={avatarUrl}
+                  name={displayName}
+                  size="lg"
+                  className="ring-2 ring-primary/40 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-black text-text truncate">{displayName}</h3>
+                  <p className="text-xs text-text-muted truncate mt-0.5">
+                    {user?.email || t('auth.offlineMode', 'Offline Account')}
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                    <Badge variant="neutral" size="sm" className="font-mono text-[10px]">
+                      {profile?.baseCurrency || baseCurrency}
+                    </Badge>
+                    <Badge variant="neutral" size="sm" className="text-[10px]">
+                      {currentLang === 'hi' ? 'हिन्दी (Hindi)' : 'English'}
+                    </Badge>
+                    {hasPin && (
+                      <Badge variant="success" size="sm" className="text-[10px]">
+                        PIN Locked
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* PREFERENCES SECTION */}
+          {activeTab === 'preferences' && (
+            <Card className="p-6 rounded-3xl space-y-6">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-border/40">
+                <Palette size={18} className="text-primary" />
+                <h2 className="text-base font-bold text-text">{t('settings.preferences', 'Preferences')}</h2>
+              </div>
+
+              {/* Theme Picker via SegmentedControl */}
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-text uppercase tracking-wider block">
+                  {t('settings.appearance', 'Appearance & Theme')}
+                </label>
+                <SegmentedControl
+                  value={theme}
+                  onChange={(v) => setTheme(v as Theme)}
+                  options={[
+                    { value: 'system', label: 'System' },
+                    { value: 'light', label: 'Light' },
+                    { value: 'dark', label: 'Dark' },
+                  ]}
+                  size="md"
+                  className="w-full"
+                />
+
+                {/* Interactive Accent Picker */}
+                <div className="space-y-2.5 pt-3 border-t border-border/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-text uppercase tracking-wider block">
+                      Accent Color
+                    </span>
+                    <span className="text-[11px] text-text-muted capitalize">
+                      Active: {accent || 'teal'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
+                    {ACCENTS.map((item) => {
+                      const isSelected = (accent || 'teal') === item.id
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setAccent(item.id)}
+                          className={`p-2.5 rounded-xl border flex flex-col items-center gap-2 text-xs font-semibold transition-all ${
+                            isSelected
+                              ? 'border-primary ring-2 ring-primary/30 bg-surface-overlay text-text font-bold shadow-xs'
+                              : 'border-border/60 bg-surface-elevated text-text-muted hover:text-text hover:bg-surface-overlay'
+                          }`}
+                          aria-label={`Select ${item.label} accent`}
+                          aria-pressed={isSelected}
+                        >
+                          <div className="relative">
+                            <span
+                              className="w-6 h-6 rounded-full block border border-white/20 shadow-xs"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            {isSelected && (
+                              <Check size={13} className="absolute inset-0 m-auto text-white stroke-[3] drop-shadow-xs" />
+                            )}
+                          </div>
+                          <span className="text-[11px] truncate w-full text-center">{item.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Language Selection */}
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <label className="text-xs font-bold text-text uppercase tracking-wider block">
+                  {t('settings.language', 'App Language')}
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleLanguageChange('en')}
+                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 font-bold text-xs transition-all ${
+                      currentLang === 'en'
+                        ? 'border-primary bg-primary/10 text-primary shadow-xs'
+                        : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base" role="img" aria-label="UK flag">🇬🇧</span>
+                      <span>English</span>
+                    </div>
+                    {currentLang === 'en' && <Check size={16} className="text-primary shrink-0" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleLanguageChange('hi')}
+                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 font-bold text-xs transition-all ${
+                      currentLang === 'hi'
+                        ? 'border-primary bg-primary/10 text-primary shadow-xs'
+                        : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base" role="img" aria-label="India flag">🇮🇳</span>
+                      <span className="font-hindi text-sm">हिन्दी (Hindi)</span>
+                    </div>
+                    {currentLang === 'hi' && <Check size={16} className="text-primary shrink-0" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Currency & Month Start */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border/40">
+                <Select
+                  label={t('settings.baseCurrency', 'Base Currency')}
+                  value={baseCurrency}
+                  onChange={(e) => {
+                    if (e.target.value !== baseCurrency) {
+                      setPendingCurrency(e.target.value)
+                    }
+                  }}
+                  options={[
+                    { value: 'INR', label: 'INR (₹) - Indian Rupee' },
+                    { value: 'USD', label: 'USD ($) - US Dollar' },
+                    { value: 'EUR', label: 'EUR (€) - Euro' },
+                    { value: 'GBP', label: 'GBP (£) - British Pound' },
+                    { value: 'AED', label: 'AED (د.إ) - UAE Dirham' },
+                  ]}
+                />
+
+                <Input
+                  type="number"
+                  min="1"
+                  max="28"
+                  label={t('settings.monthStartDay', 'Month Start Day (1 to 28)')}
+                  value={monthStartDay}
+                  onChange={(e) => handleMonthStartChange(e.target.value)}
+                  helperText={t('settings.monthStartHelper', 'Aligns monthly reports with your salary date')}
+                />
+              </div>
+            </Card>
+          )}
+
+          {/* SECURITY & PRIVACY SECTION */}
+          {activeTab === 'security' && (
+            <Card className="p-6 rounded-3xl space-y-6">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-border/40">
+                <Shield size={18} className="text-primary" />
+                <h2 className="text-base font-bold text-text">{t('settings.privacy', 'Privacy & Security')}</h2>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-surface-elevated rounded-2xl border border-border/50">
+                <div>
+                  <span className="text-sm font-bold text-text block">
+                    {t('settings.hideBalances', 'Hide Account Balances')}
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    {t('settings.hideBalancesDesc', 'Mask amounts across all screens for privacy in public')}
+                  </span>
+                </div>
+                <Button
+                  variant={hideBalances ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setHideBalances(!hideBalances)}
+                  className="h-9 px-3"
+                >
+                  {hideBalances ? <EyeOff size={16} /> : <Eye size={16} />}
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-surface-elevated rounded-2xl border border-border/50">
+                <div>
+                  <span className="text-sm font-bold text-text block">
+                    {t('settings.pinLock', 'PIN App Lock')}
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    {hasPin
+                      ? t('settings.pinLockActive', 'PIN protection active • Locks when app is minimized or hidden.')
+                      : t('settings.pinLockInactive', 'Require a 4 to 6-digit PIN to open the app.')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasPin ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setPinError(null)
+                          setNewPin('')
+                          setConfirmPin('')
+                          setIsPinModalOpen(true)
+                        }}
+                        className="h-8 text-xs"
+                      >
+                        {t('settings.changePin', 'Change')}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={handleRemovePin}
+                        className="h-8 text-xs"
+                      >
+                        {t('settings.removePin', 'Remove')}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leftIcon={<Lock size={14} />}
+                      onClick={() => {
+                        setPinError(null)
+                        setNewPin('')
+                        setConfirmPin('')
+                        setIsPinModalOpen(true)
+                      }}
+                      className="h-8 text-xs"
+                    >
+                      {t('settings.setPin', 'Set PIN')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* DATA & SYNC SECTION */}
+          {activeTab === 'data' && (
+            <Card className="p-6 rounded-3xl space-y-6">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-border/40">
+                <Database size={18} className="text-primary" />
+                <h2 className="text-base font-bold text-text">{t('settings.syncAndData', 'Cloud Sync & Data Backup')}</h2>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-surface-elevated rounded-2xl border border-border/50 text-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-text">{t('settings.syncStatus', 'Sync Status')}:</span>
+                    <Badge variant={syncStatus === 'synced' ? 'success' : syncStatus === 'error' ? 'danger' : 'neutral'}>
+                      {syncStatus}
+                    </Badge>
+                  </div>
+                  <p className="text-text-muted mt-1">
+                    {t('settings.lastSynced', 'Last synced')}: {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : t('settings.never', 'Never')}
+                    {pendingCount > 0 ? ` • ${t('settings.pendingChanges', { count: pendingCount, defaultValue: `${pendingCount} pending local changes` })}` : ''}
+                  </p>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<RefreshCw size={14} />}
+                  onClick={handleManualSync}
+                  className="h-8 text-xs"
+                >
+                  {t('settings.syncNow', 'Sync Now')}
+                </Button>
+              </div>
+
+              <Button
+                variant="secondary"
+                className="w-full"
+                leftIcon={<Download size={16} />}
+                isLoading={isExporting}
+                onClick={handleFullExport}
+              >
+                {t('settings.exportAll', 'Export All Data as JSON Backup')}
+              </Button>
+            </Card>
+          )}
+
+          {/* ACCOUNT & SECURITY SECTION */}
+          {activeTab === 'account' && (
+            <Card className="p-6 rounded-3xl space-y-6 border-danger/30">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-border/40 text-danger">
+                <LogOut size={18} />
+                <h2 className="text-base font-bold">{t('settings.accountSecurity', 'Account & Security')}</h2>
+              </div>
+
+              <p className="text-xs text-text-muted leading-relaxed">
+                Manage sessions and account termination. Sign out from this device or all active sessions.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={async () => {
+                    await signOut()
+                    navigate('/auth/sign-in')
                   }}
                 >
-                  {t('settings.changePin', 'Change PIN')}
+                  {t('settings.signOut', 'Sign Out')}
                 </Button>
+
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={async () => {
+                    if (window.confirm('Sign out from all active devices and sessions?')) {
+                      await signOutAll()
+                      navigate('/auth/sign-in')
+                    }
+                  }}
+                >
+                  {t('settings.signOutAll', 'Sign Out Everywhere')}
+                </Button>
+
                 <Button
                   variant="danger"
-                  size="sm"
-                  onClick={handleRemovePin}
+                  className="flex-1"
+                  isLoading={isDeleting}
+                  onClick={handleDeleteAccount}
                 >
-                  {t('settings.removePin', 'Remove')}
+                  {t('settings.deleteAccount', 'Delete Account')}
                 </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                leftIcon={<Lock size={14} />}
-                onClick={() => {
-                  setPinError(null)
-                  setNewPin('')
-                  setConfirmPin('')
-                  setIsPinModalOpen(true)
-                }}
-              >
-                {t('settings.setPin', 'Set PIN')}
-              </Button>
-            )}
-          </div>
+              </div>
+            </Card>
+          )}
+
+          {/* ABOUT SECTION */}
+          {activeTab === 'about' && (
+            <Card className="p-6 rounded-3xl space-y-6">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-border/40">
+                <Info size={18} className="text-primary" />
+                <h2 className="text-base font-bold text-text">{t('settings.about', 'About')}</h2>
+              </div>
+
+              <div className="flex flex-col items-center justify-center py-4 text-center space-y-3">
+                <Logo size={48} className="shadow-md rounded-2xl" />
+                <BrandName className="text-2xl text-text" />
+                <p className="text-xs text-text-muted max-w-sm">
+                  Offline-first personal finance with Dexie.js local storage and Supabase cloud sync.
+                </p>
+                <Badge variant="neutral" size="sm" className="font-mono text-xs">
+                  Version 1.0.0
+                </Badge>
+              </div>
+
+              {/* Developer details */}
+              <div className="p-4 rounded-2xl bg-surface-elevated border border-border/50 text-xs space-y-1.5">
+                <p className="font-bold text-text">Developer Information</p>
+                <p className="text-text-muted">Mritunjay Pandey</p>
+                <p className="text-text-muted">GitHub: @mritunjaylive</p>
+                <p className="text-text-muted">Website: mritunjaylive.in</p>
+                <p className="text-text-muted">Email: mritunjay@mritunjaylive.in</p>
+              </div>
+            </Card>
+          )}
         </div>
-      </Card>
-
-      {/* Cloud Sync & Backup */}
-      <Card className="space-y-4">
-        <CardTitle className="text-base flex items-center gap-2">
-          <RefreshCw size={18} className="text-primary" />
-          <span>{t('settings.syncAndData', 'Cloud Sync & Data Backup')}</span>
-        </CardTitle>
-
-        <div className="flex items-center justify-between p-3 bg-surface rounded-xl border border-border text-xs">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-text">{t('settings.syncStatus', 'Sync Status')}:</span>
-              <Badge variant={syncStatus === 'synced' ? 'success' : syncStatus === 'error' ? 'danger' : 'neutral'}>
-                {syncStatus}
-              </Badge>
-            </div>
-            <p className="text-text-muted mt-1">
-              {t('settings.lastSynced', 'Last synced')}: {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : t('settings.never', 'Never')}
-              {pendingCount > 0 ? ` • ${t('settings.pendingChanges', { count: pendingCount, defaultValue: `${pendingCount} pending local changes` })}` : ''}
-            </p>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<RefreshCw size={14} />}
-            onClick={handleManualSync}
-          >
-            {t('settings.syncNow', 'Sync Now')}
-          </Button>
-        </div>
-
-        <div className="pt-2">
-          <Button
-            variant="secondary"
-            className="w-full"
-            leftIcon={<Download size={16} />}
-            isLoading={isExporting}
-            onClick={handleFullExport}
-          >
-            {t('settings.exportAll', 'Export All Data as JSON Backup')}
-          </Button>
-        </div>
-      </Card>
-
-      {/* Account Lifecycle */}
-      <Card className="space-y-4 border-danger/30">
-        <CardTitle className="text-base text-danger flex items-center gap-2">
-          <LogOut size={18} />
-          <span>{t('settings.accountSecurity', 'Account & Security')}</span>
-        </CardTitle>
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={async () => {
-              await signOut()
-              navigate('/auth/sign-in')
-            }}
-          >
-            {t('settings.signOut', 'Sign Out')}
-          </Button>
-
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={async () => {
-              if (window.confirm('Sign out from all active devices and sessions?')) {
-                await signOutAll()
-                navigate('/auth/sign-in')
-              }
-            }}
-          >
-            {t('settings.signOutAll', 'Sign Out Everywhere')}
-          </Button>
-
-          <Button
-            variant="danger"
-            className="flex-1"
-            isLoading={isDeleting}
-            onClick={handleDeleteAccount}
-          >
-            {t('settings.deleteAccount', 'Delete Account')}
-          </Button>
-        </div>
-      </Card>
-
-      {/* App Branding & Version */}
-      <div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
-        <button
-          type="button"
-          onClick={() => navigate('/help')}
-          className="inline-flex items-center gap-2.5 group hover:opacity-90 transition-opacity"
-        >
-          <Logo size={28} className="shadow-sm rounded-lg group-hover:scale-105 transition-transform" />
-          <BrandName className="text-base text-text group-hover:text-primary transition-colors" />
-        </button>
-        <p className="text-xs text-text-muted">
-          Version 1.0.0 • 100% Offline-First Personal Finance
-        </p>
       </div>
 
       {/* Edit Profile Modal */}
@@ -610,7 +745,7 @@ export default function SettingsScreen() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-3 bg-surface rounded-xl border border-border">
+          <div className="flex items-center gap-2 p-3 bg-surface-elevated rounded-xl border border-border">
             <input
               type="checkbox"
               id="convertBudgetsCheckbox"
@@ -721,6 +856,6 @@ export default function SettingsScreen() {
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   )
 }

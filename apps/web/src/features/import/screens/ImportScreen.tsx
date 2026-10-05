@@ -6,7 +6,7 @@ import { transactionRepo } from '../../../db/repositories/transactionRepo'
 import { useAuthStore } from '../../auth/stores/authStore'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { parseAmountToMinor, formatMoney } from '../../../lib/money'
-import { Card, CardTitle, Button, Select, Badge } from '../../../ui'
+import { Page, PageHeader, Card, CardTitle, Button, Select, Badge } from '../../../ui'
 import { Upload, CheckCircle2, RotateCcw, FileText, Database as DbIcon, AlertTriangle } from 'lucide-react'
 import { parseMmbak, importMmbakBatch, undoImportBatch, type MmbakParseResult } from '../services/mmbakParser'
 
@@ -183,13 +183,11 @@ export default function ImportScreen() {
   }
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-text">{t('import.title', 'Data Import')}</h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          Import statement data from CSV files or backups from Money Manager (.mmbak / .sqlite)
-        </p>
-      </div>
+    <Page width="default" className="space-y-6">
+      <PageHeader
+        title={t('import.title', 'Data Import')}
+        subtitle="Import statement data from CSV files or backups from Money Manager (.mmbak / .sqlite)"
+      />
 
       {isSuccess ? (
         <Card className="p-8 text-center space-y-4">
@@ -219,7 +217,7 @@ export default function ImportScreen() {
           <div className="flex gap-2 border-b border-border pb-2">
             <button
               className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-colors ${
-                activeTab === 'csv' ? 'bg-primary text-white' : 'text-text-muted hover:text-text bg-surface'
+                activeTab === 'csv' ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:text-text bg-surface'
               }`}
               onClick={() => setActiveTab('csv')}
             >
@@ -228,7 +226,7 @@ export default function ImportScreen() {
             </button>
             <button
               className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-colors ${
-                activeTab === 'mmbak' ? 'bg-primary text-white' : 'text-text-muted hover:text-text bg-surface'
+                activeTab === 'mmbak' ? 'bg-primary text-primary-foreground' : 'text-text-muted hover:text-text bg-surface'
               }`}
               onClick={() => setActiveTab('mmbak')}
             >
@@ -449,6 +447,6 @@ export default function ImportScreen() {
           )}
         </div>
       )}
-    </div>
+    </Page>
   )
 }

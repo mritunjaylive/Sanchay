@@ -38,7 +38,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="min-h-dvh flex items-center justify-center bg-surface">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -55,7 +55,7 @@ function RequireOnboarded({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="min-h-dvh flex items-center justify-center bg-surface">
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -67,7 +67,7 @@ function RequireOnboarded({ children }: { children: React.ReactNode }) {
 }
 
 const fallback = (
-  <div className="min-h-screen flex items-center justify-center bg-surface">
+  <div className="min-h-dvh flex items-center justify-center bg-surface">
     <LoadingSpinner size="lg" />
   </div>
 )
@@ -110,25 +110,25 @@ const router = createBrowserRouter([
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <HomePage /> },
-      { path: 'transactions', element: <TransactionsPage /> },
-      { path: 'transactions/new', element: <TransactionEditorPage /> },
-      { path: 'transactions/:id', element: <TransactionEditorPage /> },
-      { path: 'accounts', element: <AccountsPage /> },
-      { path: 'accounts/:id', element: <AccountDetailPage /> },
-      { path: 'budgets', element: <BudgetsPage /> },
-      { path: 'bills', element: <BillsPage /> },
-      { path: 'loans', element: <LoansPage /> },
-      { path: 'goals', element: <GoalsPage /> },
-      { path: 'reports/summary', element: <ReportSummaryPage /> },
-      { path: 'reports/categories', element: <ReportCategoriesPage /> },
-      { path: 'reports/trends', element: <ReportTrendsPage /> },
-      { path: 'reports/net-worth', element: <ReportNetWorthPage /> },
-      { path: 'reports/budget', element: <ReportBudgetPage /> },
-      { path: 'calendar', element: <CalendarPage /> },
-      { path: 'import', element: <ImportPage /> },
-      { path: 'settings/*', element: <SettingsPage /> },
-      { path: 'help', element: <HelpPage /> },
+      { index: true, element: <HomePage />, handle: { titleKey: 'nav.home' } },
+      { path: 'transactions', element: <TransactionsPage />, handle: { titleKey: 'nav.transactions' } },
+      { path: 'transactions/new', element: <TransactionEditorPage />, handle: { titleKey: 'nav.newTransaction' } },
+      { path: 'transactions/:id', element: <TransactionEditorPage />, handle: { titleKey: 'nav.editTransaction' } },
+      { path: 'accounts', element: <AccountsPage />, handle: { titleKey: 'nav.accounts' } },
+      { path: 'accounts/:id', element: <AccountDetailPage />, handle: { titleKey: 'nav.accountDetail' } },
+      { path: 'budgets', element: <BudgetsPage />, handle: { titleKey: 'nav.budgets' } },
+      { path: 'bills', element: <BillsPage />, handle: { titleKey: 'nav.bills' } },
+      { path: 'loans', element: <LoansPage />, handle: { titleKey: 'nav.loans' } },
+      { path: 'goals', element: <GoalsPage />, handle: { titleKey: 'nav.goals' } },
+      { path: 'reports/summary', element: <ReportSummaryPage />, handle: { titleKey: 'nav.reportsSummary' } },
+      { path: 'reports/categories', element: <ReportCategoriesPage />, handle: { titleKey: 'nav.reportsCategories' } },
+      { path: 'reports/trends', element: <ReportTrendsPage />, handle: { titleKey: 'nav.reportsTrends' } },
+      { path: 'reports/net-worth', element: <ReportNetWorthPage />, handle: { titleKey: 'nav.reportsNetWorth' } },
+      { path: 'reports/budget', element: <ReportBudgetPage />, handle: { titleKey: 'nav.reportsBudget' } },
+      { path: 'calendar', element: <CalendarPage />, handle: { titleKey: 'nav.calendar' } },
+      { path: 'import', element: <ImportPage />, handle: { titleKey: 'nav.import' } },
+      { path: 'settings/*', element: <SettingsPage />, handle: { titleKey: 'nav.settings' } },
+      { path: 'help', element: <HelpPage />, handle: { titleKey: 'nav.help' } },
     ],
   },
   // Catch-all

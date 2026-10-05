@@ -7,9 +7,19 @@ import { useAuthStore } from '../../auth/stores/authStore'
 import { calculatePeriodSummary, calculateTopPayees } from '../../../domain/reports'
 import { periodFor, subtractOneMonth } from '../../../domain/dates'
 import { formatMoney } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent, Select, Badge } from '../../../ui'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Amount,
+  ProgressBar,
+  Select,
+  Badge,
+  EmptyState,
+  SkeletonCard,
+} from '../../../ui'
 import { ReportHeader } from '../components/ReportHeader'
-import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
+import { TrendingUp, TrendingDown, PiggyBank, Receipt } from 'lucide-react'
 
 export default function SummaryScreen() {
   const { t } = useTranslation()
@@ -26,7 +36,6 @@ export default function SummaryScreen() {
       const lastMonthStr = subtractOneMonth(todayStr.substring(0, 7))
       return periodFor(`${lastMonthStr}-01`, monthStartDay)
     } else {
-      // thisYear
       const year = todayStr.substring(0, 4)
       return { start: `${year}-01-01`, end: `${year}-12-31` }
     }
@@ -35,8 +44,9 @@ export default function SummaryScreen() {
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
   const summary = useMemo(() => {
-    if (!transactions)
+    if (!transactions) {
       return { incomeMinor: 0, expenseMinor: 0, netSavingsMinor: 0, savingsRatePercent: 0, transactionCount: 0 }
+    }
     return calculatePeriodSummary(transactions, start, end)
   }, [transactions, start, end])
 
@@ -45,114 +55,151 @@ export default function SummaryScreen() {
     return calculateTopPayees(transactions, start, end, 8)
   }, [transactions, start, end])
 
+  if (transactions === undefined) {
+    return (
+      <Page width="default" className="space-y-6">
+        <ReportHeader />
+        <SkeletonCard className="h-40" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <SkeletonCard className="h-28" />
+          <SkeletonCard className="h-28" />
+          <SkeletonCard className="h-28" />
+        </div>
+      </Page>
+    )
+  }
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-6">
       <ReportHeader />
 
-      {/* Period Selector */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-text">{t('reports.financialSummary', 'Financial Summary')}</h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            {start} → {end}
-          </p>
-        </div>
-
-        <Select
-          value={periodPreset}
-          onChange={(e) => setPeriodPreset(e.target.value as 'thisMonth' | 'lastMonth' | 'thisYear')}
-          className="w-44 text-xs h-9"
-          options={[
-            { value: 'thisMonth', label: t('reports.thisMonth', 'This Month') },
-            { value: 'lastMonth', label: t('reports.lastMonth', 'Last Month') },
-            { value: 'thisYear', label: t('reports.thisYear', 'This Year') },
-          ]}
-        />
-      </div>
+      <PageHeader
+        title={t('reports.financialSummary', 'Financial Summary')}
+        subtitle={`${start} → ${end}`}
+        action={
+          <Select
+            value={periodPreset}
+            onChange={(e) => setPeriodPreset(e.target.value as 'thisMonth' | 'lastMonth' | 'thisYear')}
+            className="w-40 text-xs h-9"
+            options={[
+              { value: 'thisMonth', label: t('reports.thisMonth', 'This Month') },
+              { value: 'lastMonth', label: t('reports.lastMonth', 'Last Month') },
+              { value: 'thisYear', label: t('reports.thisYear', 'This Year') },
+            ]}
+          />
+        }
+      />
 
       {/* Overview Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center justify-between text-text-muted mb-1 text-xs">
+        {/* Income */}
+        <Card className="p-5 rounded-2xl relative overflow-hidden space-y-3">
+          <div className="flex items-center justify-between text-text-muted text-xs">
             <span className="font-semibold uppercase tracking-wider">{t('reports.totalIncome', 'Income')}</span>
-            <div className="w-8 h-8 rounded-full bg-success/10 text-success flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-success/10 text-success flex items-center justify-center">
               <TrendingUp size={16} />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-success mt-1">
-            {formatMoney(summary.incomeMinor, baseCurrency, locale)}
-          </div>
+          <Amount
+            minor={summary.incomeMinor}
+            currency={baseCurrency}
+            tone="income"
+            showSign={false}
+            size="lg"
+            className="font-black block"
+          />
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between text-text-muted mb-1 text-xs">
+        {/* Expense */}
+        <Card className="p-5 rounded-2xl relative overflow-hidden space-y-3">
+          <div className="flex items-center justify-between text-text-muted text-xs">
             <span className="font-semibold uppercase tracking-wider">{t('reports.totalExpense', 'Expense')}</span>
-            <div className="w-8 h-8 rounded-full bg-danger/10 text-danger flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-surface-overlay text-text-muted flex items-center justify-center">
               <TrendingDown size={16} />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-danger mt-1">
-            {formatMoney(summary.expenseMinor, baseCurrency, locale)}
-          </div>
+          <Amount
+            minor={summary.expenseMinor}
+            currency={baseCurrency}
+            tone="neutral"
+            showSign={false}
+            size="lg"
+            className="font-black block"
+          />
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between text-text-muted mb-1 text-xs">
+        {/* Net Savings */}
+        <Card className="p-5 rounded-2xl relative overflow-hidden space-y-3">
+          <div className="flex items-center justify-between text-text-muted text-xs">
             <span className="font-semibold uppercase tracking-wider">{t('reports.netSavings', 'Net Savings')}</span>
-            <Badge variant={summary.netSavingsMinor >= 0 ? 'success' : 'danger'}>
-              {summary.savingsRatePercent}%
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge variant={summary.netSavingsMinor >= 0 ? 'success' : 'danger'} size="sm">
+                {summary.savingsRatePercent}%
+              </Badge>
+              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <PiggyBank size={16} />
+              </div>
+            </div>
           </div>
-          <div
-            className={`text-2xl font-extrabold mt-1 ${
-              summary.netSavingsMinor >= 0 ? 'text-success' : 'text-danger'
-            }`}
-          >
-            {formatMoney(summary.netSavingsMinor, baseCurrency, locale)}
-          </div>
-          <p className="text-[11px] text-text-muted mt-1">
+          <Amount
+            minor={summary.netSavingsMinor}
+            currency={baseCurrency}
+            tone={summary.netSavingsMinor >= 0 ? 'income' : 'danger'}
+            showSign={summary.netSavingsMinor < 0}
+            size="lg"
+            className="font-black block"
+          />
+          <p className="text-[11px] text-text-muted">
             {summary.transactionCount} transactions recorded
           </p>
         </Card>
       </div>
 
       {/* Top Payees / Merchants */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">{t('reports.topPayees', 'Top Payees / Merchants')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {topPayees.length === 0 ? (
-            <div className="py-8 text-center text-text-muted text-xs">
-              {t('reports.noPayeeData', 'No expense payees in this period.')}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {topPayees.map((p, idx) => {
-                const percentOfTotal =
-                  summary.expenseMinor > 0 ? (p.amountMinor / summary.expenseMinor) * 100 : 0
+      <Card className="p-6 rounded-2xl space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-text">{t('reports.topPayees', 'Top Payees / Merchants')}</h2>
+          <span className="text-xs text-text-muted">{topPayees.length} payees</span>
+        </div>
 
-                return (
-                  <div key={p.payee} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-text">
-                        {idx + 1}. {p.payee}
+        {topPayees.length === 0 ? (
+          <EmptyState
+            icon={<Receipt size={28} />}
+            title={t('reports.noPayeeData', 'No expense payees in this period.')}
+            description="Add transactions to see your top merchants and payees ranked here."
+          />
+        ) : (
+          <div className="space-y-4">
+            {topPayees.map((p, idx) => {
+              const percentOfTotal =
+                summary.expenseMinor > 0 ? (p.amountMinor / summary.expenseMinor) * 100 : 0
+
+              return (
+                <div key={p.payee} className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="text-text flex items-center gap-2">
+                      <span className="text-[11px] text-text-muted w-4 font-normal">{idx + 1}.</span>
+                      {p.payee}
+                    </span>
+                    <span className="text-text">
+                      {formatMoney(p.amountMinor, baseCurrency, locale)}{' '}
+                      <span className="text-[10px] text-text-muted font-normal">
+                        ({Math.round(percentOfTotal)}%)
                       </span>
-                      <span>{formatMoney(p.amountMinor, baseCurrency, locale)}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${Math.min(100, percentOfTotal)}%` }}
-                      />
-                    </div>
+                    </span>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
+                  <ProgressBar
+                    value={percentOfTotal}
+                    max={100}
+                    tone="primary"
+                    size="sm"
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Card>
-    </div>
+    </Page>
   )
 }

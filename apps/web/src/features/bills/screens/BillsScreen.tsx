@@ -9,10 +9,37 @@ import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { occurrences } from '../../../domain/recurrence'
 import { addOneMonth } from '../../../domain/dates'
 import { uuidv5 } from '../../../lib/ids'
+import { formatDayLabel } from '../../../lib/formatDayLabel'
 import { formatMoney, parseAmountToMinor } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select, Modal, Badge } from '../../../ui'
-import { Plus, Check, SkipForward, Clock, Calendar, AlertCircle } from 'lucide-react'
-import type { RecurringRule, RecurringFreq, RecurringMode, TransactionType } from '@sanchay/shared'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Select,
+  Modal,
+  Badge,
+  Amount,
+  CategoryIcon,
+  SegmentedControl,
+  EmptyState,
+  SkeletonCard,
+  SkeletonRow,
+} from '../../../ui'
+import {
+  Plus,
+  Check,
+  SkipForward,
+  Receipt,
+  Calendar,
+  Clock,
+  AlertCircle,
+  Repeat,
+  Trash2,
+} from 'lucide-react'
+import type { RecurringRule, RecurringFreq, RecurringMode, TransactionType, Category, Account } from '@sanchay/shared'
+import { cn } from '../../../lib/cn'
 
 export default function BillsScreen() {
   const { t } = useTranslation()
@@ -33,8 +60,8 @@ export default function BillsScreen() {
   const [mode, setMode] = useState<RecurringMode>('remind_only')
   const [startDate, setStartDate] = useState(new Date().toISOString().substring(0, 10))
 
-  const todayStr = new Date().toISOString().substring(0, 10)
-  const next30DaysStr = addOneMonth(todayStr)
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), [])
+  const next30DaysStr = useMemo(() => addOneMonth(todayStr), [todayStr])
 
   // DB queries
   const rules = useLiveQuery(() => db.recurringRules.filter((r) => !r.deletedAt).toArray(), [])
@@ -43,10 +70,12 @@ export default function BillsScreen() {
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).sortBy('sortOrder'), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
 
+  const isLoading = rules === undefined || accounts === undefined || categories === undefined
+
   const uniqueRelevantCategories = useMemo(() => {
     if (!categories) return []
     const seen = new Set<string>()
-    const list: typeof categories = []
+    const list: Category[] = []
     for (const c of categories) {
       if (user?.id && c.userId && c.userId !== user.id) continue
       if (c.kind !== type) continue
@@ -60,20 +89,14 @@ export default function BillsScreen() {
   }, [categories, type, user?.id])
 
   const accountMap = useMemo(() => {
-    const map = new Map<string, string>()
-    accounts?.forEach((a) => map.set(a.id, a.name))
-    return map
-  }, [accounts])
-
-  const accountCurrencyMap = useMemo(() => {
-    const map = new Map<string, string>()
-    accounts?.forEach((a) => map.set(a.id, a.currency))
+    const map = new Map<string, Account>()
+    accounts?.forEach((a) => map.set(a.id, a))
     return map
   }, [accounts])
 
   const categoryMap = useMemo(() => {
-    const map = new Map<string, string>()
-    categories?.forEach((c) => map.set(c.id, c.name))
+    const map = new Map<string, Category>()
+    categories?.forEach((c) => map.set(c.id, c))
     return map
   }, [categories])
 
@@ -93,11 +116,9 @@ export default function BillsScreen() {
       const dates = occurrences(rule, rule.startDate, next30DaysStr, ruleOverrides)
 
       for (const d of dates) {
-        // Check if override skipped
         const override = ruleOverrides.find((o) => o.occurrenceDate === d)
         if (override?.action === 'skip') continue
 
-        // Check if already paid/materialized in transactions
         const isPaid = transactions.some(
           (tx) => tx.recurringRuleId === rule.id && tx.recurringOccurrenceDate === d,
         )
@@ -120,7 +141,16 @@ export default function BillsScreen() {
     return items.sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate))
   }, [rules, overrides, transactions, todayStr, next30DaysStr])
 
-  // Mark occurrence as paid: creates transaction with deterministic UUIDv5 id
+  const overdueBills = useMemo(
+    () => upcomingOccurrences.filter((item) => item.isOverdue),
+    [upcomingOccurrences],
+  )
+  const dueSoonBills = useMemo(
+    () => upcomingOccurrences.filter((item) => !item.isOverdue),
+    [upcomingOccurrences],
+  )
+
+  // Mark occurrence as paid
   const handleMarkPaid = async (rule: RecurringRule, occurrenceDate: string, amountMinor: number) => {
     if (!user) return
 
@@ -196,181 +226,275 @@ export default function BillsScreen() {
     setAmountStr('')
   }
 
+  const handleDeleteRule = async (ruleId: string) => {
+    if (window.confirm('Delete this recurring rule?')) {
+      await recurringRepo.deleteRule(ruleId)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Page width="default" className="space-y-6">
+        <SkeletonCard className="h-16" />
+        <SkeletonRow />
+        <SkeletonRow />
+      </Page>
+    )
+  }
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">{t('bills.title', 'Bills & Recurring')}</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            {t('bills.subtitle', 'Manage subscriptions, EMI payments, and upcoming bill reminders')}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Tabs */}
-          <div className="flex bg-surface-elevated border border-border rounded-lg p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('upcoming')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === 'upcoming' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              {t('bills.upcomingTab', 'Upcoming (30 Days)')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('rules')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === 'rules' ? 'bg-primary text-white shadow-xs' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              {t('bills.rulesTab', 'Recurring Rules')}
-            </button>
-          </div>
-
+      <PageHeader
+        title={t('nav.bills', 'Bills & Recurring')}
+        subtitle="Manage upcoming recurring payments, subscriptions, and reminders"
+        actions={
           <Button
             variant="primary"
+            size="sm"
             leftIcon={<Plus size={16} />}
             onClick={() => {
-              if (accounts?.length && !accountId) setAccountId(accounts[0]!.id)
+              if (accounts && accounts.length > 0 && !accountId) {
+                setAccountId(accounts[0]!.id)
+              }
               setIsModalOpen(true)
             }}
           >
-            {t('bills.newRule', 'New Rule')}
+            Add Recurring Rule
           </Button>
-        </div>
+        }
+      />
+
+      {/* Tabs */}
+      <div className="max-w-xs">
+        <SegmentedControl
+          options={[
+            { value: 'upcoming', label: `Upcoming (${upcomingOccurrences.length})` },
+            { value: 'rules', label: `Rules (${rules?.length ?? 0})` },
+          ]}
+          value={activeTab}
+          onChange={(val) => setActiveTab(val as 'upcoming' | 'rules')}
+        />
       </div>
 
       {activeTab === 'upcoming' ? (
         upcomingOccurrences.length === 0 ? (
-          <Card className="py-16 text-center text-text-muted">
-            <Check size={32} className="mx-auto text-success mb-2" />
-            <p className="text-base font-medium">{t('bills.noUpcoming', 'All caught up!')}</p>
-            <p className="text-xs mt-1">{t('bills.noBillsNext30', 'No bills due in the next 30 days.')}</p>
-          </Card>
+          <EmptyState
+            icon={<Receipt size={28} />}
+            title="No upcoming bills"
+            description="You don't have any bills or recurring payments due in the next 30 days."
+            actionLabel="Add Recurring Rule"
+            onAction={() => setIsModalOpen(true)}
+          />
         ) : (
-          <div className="space-y-3">
-            {upcomingOccurrences.map((item, idx) => (
-              <Card
-                key={`${item.rule.id}-${item.occurrenceDate}-${idx}`}
-                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                  item.isOverdue ? 'border-danger/30 bg-danger/5' : ''
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      item.isOverdue ? 'bg-danger/10 text-danger' : 'bg-primary/10 text-primary'
-                    }`}
-                  >
-                    <Calendar size={18} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-text text-sm">{item.rule.title}</h4>
-                      {item.isOverdue ? (
-                        <Badge variant="danger" size="sm">
-                          {t('bills.overdue', 'Overdue')}
-                        </Badge>
-                      ) : (
-                        <Badge variant="neutral" size="sm">
-                          {item.rule.freq}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {t('bills.dueOn', 'Due on')} {item.occurrenceDate} • {accountMap.get(item.rule.accountId)}
-                    </p>
-                  </div>
+          <div className="space-y-6">
+            {/* Overdue Section */}
+            {overdueBills.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-danger px-1">
+                  <AlertCircle size={16} />
+                  <span>Overdue ({overdueBills.length})</span>
                 </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-4">
-                  <span className="font-extrabold text-base text-text">
-                    {formatMoney(item.amountMinor, accountCurrencyMap.get(item.rule.accountId) ?? 'INR', locale)}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSkip(item.rule, item.occurrenceDate)}
-                    >
-                      {t('bills.skip', 'Skip')}
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      leftIcon={<Check size={14} />}
-                      onClick={() => handleMarkPaid(item.rule, item.occurrenceDate, item.amountMinor)}
-                    >
-                      {t('bills.markPaid', 'Mark Paid')}
-                    </Button>
-                  </div>
+                <div className="space-y-2.5">
+                  {overdueBills.map(({ rule, occurrenceDate, amountMinor }) => {
+                    const category = rule.categoryId ? categoryMap.get(rule.categoryId) : undefined
+                    const account = accountMap.get(rule.accountId)
+
+                    return (
+                      <Card
+                        key={`${rule.id}-${occurrenceDate}`}
+                        className="p-4 rounded-2xl border-danger/30 bg-danger/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <CategoryIcon
+                            icon={category?.icon}
+                            color={category?.color}
+                            size="md"
+                          />
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-sm text-text truncate">{rule.title}</h4>
+                            <p className="text-xs text-danger font-semibold mt-0.5">
+                              Due {formatDayLabel(occurrenceDate, todayStr)} • Overdue
+                            </p>
+                            <span className="text-[11px] text-text-muted">
+                              {account?.name}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-none border-border/40">
+                          <Amount
+                            minor={amountMinor}
+                            currency={account?.currency ?? baseCurrency}
+                            tone="danger"
+                            showSign={false}
+                            className="text-base font-extrabold"
+                          />
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSkip(rule, occurrenceDate)}
+                              title="Skip this occurrence"
+                            >
+                              <SkipForward size={14} />
+                            </Button>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              leftIcon={<Check size={15} />}
+                              onClick={() => handleMarkPaid(rule, occurrenceDate, amountMinor)}
+                            >
+                              Mark Paid
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  })}
                 </div>
-              </Card>
-            ))}
+              </div>
+            )}
+
+            {/* Upcoming Due Section */}
+            {dueSoonBills.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-text-muted px-1">
+                  Upcoming in next 30 days ({dueSoonBills.length})
+                </div>
+
+                <div className="space-y-2.5">
+                  {dueSoonBills.map(({ rule, occurrenceDate, amountMinor }) => {
+                    const category = rule.categoryId ? categoryMap.get(rule.categoryId) : undefined
+                    const account = accountMap.get(rule.accountId)
+
+                    return (
+                      <Card
+                        key={`${rule.id}-${occurrenceDate}`}
+                        className="p-4 rounded-2xl border-border/60 hover:border-primary/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <CategoryIcon
+                            icon={category?.icon}
+                            color={category?.color}
+                            size="md"
+                          />
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-sm text-text truncate">{rule.title}</h4>
+                            <p className="text-xs text-text-muted mt-0.5">
+                              Due {formatDayLabel(occurrenceDate, todayStr)} • {account?.name}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-none border-border/40">
+                          <Amount
+                            minor={amountMinor}
+                            currency={account?.currency ?? baseCurrency}
+                            tone="neutral"
+                            showSign={false}
+                            className="text-base font-bold text-text"
+                          />
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSkip(rule, occurrenceDate)}
+                              title="Skip this occurrence"
+                            >
+                              <SkipForward size={14} />
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              leftIcon={<Check size={15} />}
+                              onClick={() => handleMarkPaid(rule, occurrenceDate, amountMinor)}
+                            >
+                              Mark Paid
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )
       ) : (
-        // Rules list
-        !rules || rules.length === 0 ? (
-          <Card className="py-16 text-center text-text-muted">
-            <p className="text-base font-medium">{t('bills.noRules', 'No recurring rules set up yet.')}</p>
-            <p className="text-xs mt-1">
-              {t('bills.rulesHint', 'Add recurring salary, rent, subscriptions, or SIPs.')}
-            </p>
-          </Card>
+        /* Rules List */
+        rules?.length === 0 ? (
+          <EmptyState
+            icon={<Repeat size={28} />}
+            title="No recurring rules"
+            description="Create recurring rules for rent, subscriptions, or salaries to automate tracking."
+            actionLabel="Add Recurring Rule"
+            onAction={() => setIsModalOpen(true)}
+          />
         ) : (
           <div className="space-y-3">
-            {rules.map((rule) => (
-              <Card key={rule.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-text text-sm">{rule.title}</h4>
-                    <Badge variant="neutral" size="sm">
-                      {rule.freq}
-                    </Badge>
-                    <Badge variant="primary" size="sm">
-                      {rule.mode}
-                    </Badge>
+            {rules?.map((rule) => {
+              const category = rule.categoryId ? categoryMap.get(rule.categoryId) : undefined
+              const account = accountMap.get(rule.accountId)
+
+              return (
+                <Card
+                  key={rule.id}
+                  className="p-4 rounded-2xl flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <CategoryIcon
+                      icon={category?.icon}
+                      color={category?.color}
+                      size="md"
+                    />
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-sm text-text truncate">{rule.title}</h4>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {rule.freq.toUpperCase()} • {account?.name} • Mode: {rule.mode}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {accountMap.get(rule.accountId)} • Started {rule.startDate}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="font-bold text-sm text-text">
-                    {formatMoney(rule.amountMinor, accountCurrencyMap.get(rule.accountId) ?? 'INR', locale)}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (window.confirm('Delete this recurring rule?')) {
-                        void recurringRepo.deleteRule(rule.id)
-                      }
-                    }}
-                  >
-                    {t('common.delete', 'Delete')}
-                  </Button>
-                </div>
-              </Card>
-            ))}
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Amount
+                      minor={rule.amountMinor}
+                      currency={account?.currency ?? baseCurrency}
+                      tone="neutral"
+                      showSign={false}
+                      className="text-sm font-bold text-text"
+                    />
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteRule(rule.id)}
+                      title="Delete rule"
+                    >
+                      <Trash2 size={16} className="text-danger" />
+                    </Button>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         )
       )}
 
-      {/* New Recurring Rule Modal */}
+      {/* Add Recurring Rule Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={t('bills.newRecurringRule', 'New Recurring Rule')}
+        title="New Recurring Rule"
       >
-        <form onSubmit={handleSaveRule} className="space-y-4">
+        <form onSubmit={handleSaveRule} className="space-y-4 py-1">
           <Input
-            label={t('bills.ruleTitle', 'Title / Description')}
-            placeholder="e.g. Netflix, Apartment Rent, Salary"
+            label="Title / Description"
+            placeholder="e.g. Netflix, Rent, WiFi"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -378,18 +502,20 @@ export default function BillsScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t('common.type', 'Type')}
+              label={t('transaction.type', 'Type')}
               value={type}
               onChange={(e) => setType(e.target.value as TransactionType)}
               options={[
-                { value: 'expense', label: 'Expense (Bill)' },
-                { value: 'income', label: 'Income (Salary/SIP)' },
+                { value: 'expense', label: 'Expense' },
+                { value: 'income', label: 'Income' },
+                { value: 'transfer', label: 'Transfer' },
               ]}
             />
+
             <Input
               type="text"
               inputMode="decimal"
-              label={t('transactions.amount', 'Amount')}
+              label={t('transaction.amount', 'Amount')}
               placeholder="0.00"
               value={amountStr}
               onChange={(e) => setAmountStr(e.target.value)}
@@ -399,14 +525,15 @@ export default function BillsScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t('accounts.account', 'Account')}
+              label={t('transaction.account', 'Account')}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               required
               options={accounts?.map((a) => ({ value: a.id, label: a.name })) ?? []}
             />
+
             <Select
-              label={t('categories.category', 'Category')}
+              label={t('transaction.category', 'Category')}
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               options={[
@@ -418,45 +545,41 @@ export default function BillsScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t('bills.frequency', 'Frequency')}
+              label="Frequency"
               value={freq}
               onChange={(e) => setFreq(e.target.value as RecurringFreq)}
               options={[
-                { value: 'monthly', label: 'Monthly' },
-                { value: 'weekly', label: 'Weekly' },
-                { value: 'yearly', label: 'Yearly' },
                 { value: 'daily', label: 'Daily' },
+                { value: 'weekly', label: 'Weekly' },
+                { value: 'monthly', label: 'Monthly' },
+                { value: 'yearly', label: 'Yearly' },
               ]}
             />
-            <Select
-              label={t('bills.mode', 'Handling Mode')}
-              value={mode}
-              onChange={(e) => setMode(e.target.value as RecurringMode)}
-              options={[
-                { value: 'remind_only', label: 'Remind Only (Mark paid manually)' },
-                { value: 'auto_post', label: 'Auto-Post (Create automatically)' },
-              ]}
+
+            <Input
+              type="date"
+              label="Start Date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
             />
           </div>
 
-          <Input
-            type="date"
-            label={t('bills.startDate', 'Start Date')}
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            required
-          />
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsModalOpen(false)}
+            >
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" className="flex-1">
               {t('common.save', 'Save Rule')}
             </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   )
 }

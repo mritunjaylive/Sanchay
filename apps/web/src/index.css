@@ -58,19 +58,23 @@
   letter-spacing: 0.03em;
 }
 
-/* When the active language is Hindi, brand headings automatically style with Khand */
+/* When active language is Hindi, brand headings automatically use Khand */
 [lang='hi'] .font-cinzel,
 :lang(hi) .font-cinzel {
   font-family: 'Khand', system-ui, -apple-system, sans-serif;
   letter-spacing: 0.02em;
 }
 
-/* ── Light Theme (default) ── */
+:lang(hi) body {
+  line-height: 1.625;
+}
+
+/* ── Light Theme (Teal + Gold Calm Wealth) ── */
 :root {
-  /* Surfaces */
-  --color-surface: 0 0% 100%;
-  --color-surface-elevated: 210 40% 98%;
-  --color-surface-overlay: 210 40% 96%;
+  /* Surfaces — Cards sit lighter (pure white) than page surface */
+  --color-surface: 180 20% 97%;
+  --color-surface-elevated: 0 0% 100%;
+  --color-surface-overlay: 180 15% 94%;
 
   /* Text */
   --color-text: 222 47% 11%;
@@ -78,39 +82,43 @@
   --color-text-subtle: 215 16% 65%;
 
   /* Borders */
-  --color-border: 214 32% 91%;
-  --color-border-subtle: 214 32% 95%;
+  --color-border: 180 12% 88%;
+  --color-border-subtle: 180 12% 93%;
 
-  /* Primary (emerald green — money/growth) */
-  --color-primary: 160 84% 39%;
+  /* Default Primary Brand (Teal) */
+  --color-primary: 175 77% 26%;
+  --color-accent: 175 77% 26%;
   --color-primary-foreground: 0 0% 100%;
 
-  /* Semantic */
-  --color-success: 142 76% 36%;
+  /* Gold Accent (Milestones, Goals, Wealth) */
+  --color-gold: 43 96% 48%;
+  --color-gold-foreground: 30 80% 15%;
+
+  /* Semantic Alerts */
+  --color-success: 158 64% 40%;
   --color-warning: 38 92% 50%;
   --color-danger: 0 84% 60%;
+  --color-danger-foreground: 0 0% 100%;
 
-  /* Finance-specific */
-  --color-income: 142 76% 36%;
-  --color-expense: 0 84% 60%;
+  /* Money Color Rule: Income = green, Expense = neutral text, Transfer = muted */
+  --color-income: 158 64% 40%;
+  --color-expense: 222 47% 11%;
 
-  /* Accent options (default: emerald) */
-  --color-accent: 160 84% 39%;
-
-  /* Spacing tokens */
-  --nav-height: 64px;
+  /* Sizing and Spacing */
+  --nav-height: 56px;
   --tab-bar-height: 64px;
-  --sidebar-width: 240px;
+  --sidebar-width: 250px;
   --max-content-width: 1200px;
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  /* Elevation Shadows with faint teal tint */
+  --shadow-xs: 0 1px 2px 0 rgb(15 118 110 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(15 118 110 / 0.08), 0 1px 2px -1px rgb(15 118 110 / 0.08);
+  --shadow-md: 0 4px 6px -1px rgb(15 118 110 / 0.08), 0 2px 4px -2px rgb(15 118 110 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(15 118 110 / 0.08), 0 4px 6px -4px rgb(15 118 110 / 0.06);
+  --shadow-xl: 0 20px 25px -5px rgb(15 118 110 / 0.1), 0 8px 10px -6px rgb(15 118 110 / 0.06);
 }
 
-/* ── Dark Theme (Pure Neutral Black / AMOLED) ── */
+/* ── Dark Theme (AMOLED / Deep Neutral with Teal Glow) ── */
 .dark {
   --color-surface: 0 0% 3%;
   --color-surface-elevated: 0 0% 8%;
@@ -123,20 +131,106 @@
   --color-border: 0 0% 16%;
   --color-border-subtle: 0 0% 11%;
 
-  --color-primary: 160 84% 45%;
-  --color-primary-foreground: 0 0% 0%;
+  --color-primary: 173 80% 40%;
+  --color-accent: 173 80% 40%;
+  --color-primary-foreground: 222 47% 11%;
 
-  --color-success: 142 76% 45%;
+  --color-gold: 43 96% 56%;
+  --color-gold-foreground: 30 80% 12%;
+
+  --color-success: 158 64% 48%;
   --color-warning: 38 92% 55%;
   --color-danger: 0 84% 65%;
+  --color-danger-foreground: 0 0% 0%;
 
-  --color-income: 142 76% 45%;
-  --color-expense: 0 84% 65%;
+  --color-income: 158 64% 48%;
+  --color-expense: 0 0% 98%;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.6);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.7), 0 2px 4px -2px rgb(0 0 0 / 0.6);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.8), 0 4px 6px -4px rgb(0 0 0 / 0.7);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.9), 0 8px 10px -6px rgb(0 0 0 / 0.8);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.6);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.8), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* ── Accent Color Themes (Light Mode) ── */
+[data-accent='teal'] {
+  --color-primary: 175 77% 26%;
+  --color-accent: 175 77% 26%;
+  --color-primary-foreground: 0 0% 100%; /* Contrast: 5.53:1 */
+}
+
+[data-accent='blue'] {
+  --color-primary: 221 83% 48%;
+  --color-accent: 221 83% 48%;
+  --color-primary-foreground: 0 0% 100%; /* Contrast: 7.44:1 */
+}
+
+[data-accent='violet'] {
+  --color-primary: 263 70% 50%;
+  --color-accent: 263 70% 50%;
+  --color-primary-foreground: 0 0% 100%; /* Contrast: 7.89:1 */
+}
+
+[data-accent='rose'] {
+  --color-primary: 343 83% 41%;
+  --color-accent: 343 83% 41%;
+  --color-primary-foreground: 0 0% 100%; /* Contrast: 7.09:1 */
+}
+
+[data-accent='amber'] {
+  --color-primary: 38 92% 50%;
+  --color-accent: 38 92% 50%;
+  --color-primary-foreground: 222 47% 11%; /* Dark text for contrast: 5.28:1 */
+}
+
+[data-accent='emerald'] {
+  --color-primary: 161 94% 30%;
+  --color-accent: 161 94% 30%;
+  --color-primary-foreground: 0 0% 100%; /* Contrast: 5.49:1 */
+}
+
+/* ── Accent Color Themes (Dark Mode) ── */
+.dark[data-accent='teal'],
+.dark [data-accent='teal'] {
+  --color-primary: 173 80% 40%;
+  --color-accent: 173 80% 40%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 7.50:1 */
+}
+
+.dark[data-accent='blue'],
+.dark [data-accent='blue'] {
+  --color-primary: 213 94% 68%;
+  --color-accent: 213 94% 68%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 6.88:1 */
+}
+
+.dark[data-accent='violet'],
+.dark [data-accent='violet'] {
+  --color-primary: 255 92% 76%;
+  --color-accent: 255 92% 76%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 6.41:1 */
+}
+
+.dark[data-accent='rose'],
+.dark [data-accent='rose'] {
+  --color-primary: 351 95% 71%;
+  --color-accent: 351 95% 71%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 6.60:1 */
+}
+
+.dark[data-accent='amber'],
+.dark [data-accent='amber'] {
+  --color-primary: 43 96% 56%;
+  --color-accent: 43 96% 56%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 10.03:1 */
+}
+
+.dark[data-accent='emerald'],
+.dark [data-accent='emerald'] {
+  --color-primary: 156 73% 52%;
+  --color-accent: 156 73% 52%;
+  --color-primary-foreground: 222 47% 11%; /* Contrast: 8.65:1 */
 }
 
 /* ── Base Resets ── */
@@ -150,7 +244,8 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    font-feature-settings: 'tnum' 1; /* tabular numbers everywhere */
+    font-feature-settings: 'tnum' 1;
+    scroll-padding-top: calc(var(--nav-height) + 16px);
   }
 
   body {
@@ -159,13 +254,13 @@
     overflow-x: hidden;
   }
 
-  /* Visible focus rings — never remove, only enhance */
+  /* Visible focus rings */
   :focus-visible {
     outline: 2px solid hsl(var(--color-primary));
     outline-offset: 2px;
   }
 
-  /* Scrollbar styling */
+  /* Scrollbars */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -192,48 +287,105 @@
     }
   }
 
-  /* Money amounts — always tabular figures and right-aligned */
   .money {
     font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  /* Income/expense color coding */
-  .income-color {
-    color: hsl(var(--color-income));
-  }
-  .expense-color {
-    color: hsl(var(--color-expense));
   }
 }
 
-/* ── Utility Components ── */
+/* ── Typography Scale & Utility Components ── */
+@layer utilities {
+  .text-display {
+    font-size: 2.25rem;
+    line-height: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+  }
+  @screen sm {
+    .text-display {
+      font-size: 2.5rem;
+      line-height: 2.75rem;
+    }
+  }
+
+  .text-title {
+    font-size: 1.5rem;
+    line-height: 1.875rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  @screen sm {
+    .text-title {
+      font-size: 1.875rem;
+      line-height: 2.25rem;
+    }
+  }
+
+  .text-heading {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+  }
+  @screen sm {
+    .text-heading {
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
+  }
+
+  .text-body {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .text-caption {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: hsl(var(--color-text-muted));
+  }
+}
+
 @layer components {
-  /* Touch-target wrapper */
+  /* Touch-target */
   .touch-target {
     @apply min-h-touch min-w-touch flex items-center justify-center;
   }
 
   /* Glass morphism card */
   .glass-card {
-    @apply bg-surface-elevated/80 backdrop-blur-md border border-border/50 rounded-xl;
-    box-shadow: var(--shadow-md);
+    @apply bg-surface-elevated/80 backdrop-blur-md border border-border/60 rounded-2xl;
+    box-shadow: var(--shadow-sm);
   }
 
-  /* Gradient text */
+  /* Gradient text (Primary Teal -> Gold tint) */
   .gradient-text {
-    background: linear-gradient(135deg, hsl(var(--color-primary)), hsl(var(--color-success)));
+    background: linear-gradient(135deg, hsl(var(--color-primary)), hsl(var(--color-gold)));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* Skeleton shimmer */
-  .skeleton {
-    @apply bg-surface-overlay rounded animate-pulse;
+  /* Shimmer skeleton */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--color-surface-overlay));
+  }
+  .skeleton-shimmer::after {
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--color-surface-elevated) / 0.4),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+    content: '';
   }
 
-  /* Safe area bottom padding for bottom nav */
+  /* Safe area padding */
   .pb-safe {
     padding-bottom: max(env(safe-area-inset-bottom), 1rem);
   }

@@ -3,3 +3,4 @@
  */
 
 export * from './components/QuickAddFAB'
+export * from './components/TransactionRow'

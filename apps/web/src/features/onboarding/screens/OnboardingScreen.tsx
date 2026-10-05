@@ -8,7 +8,18 @@ import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { profileRepo } from '../../../db/repositories/profileRepo'
 import { requestPersistentStorage } from '../../../db/db'
 import { parseAmountToMinor } from '../../../lib/money'
-import { Globe, Wallet, Check, Sparkles } from 'lucide-react'
+import {
+  Globe,
+  Wallet,
+  Check,
+  Sparkles,
+  ArrowRight,
+  ArrowLeft,
+  Landmark,
+  Banknote,
+  Smartphone,
+  PiggyBank,
+} from 'lucide-react'
 import type { AccountKind } from '@sanchay/shared'
 
 export default function OnboardingScreen() {
@@ -35,15 +46,9 @@ export default function OnboardingScreen() {
     setIsLoading(true)
 
     try {
-      // 1. Request persistent IndexedDB storage
-      // Fire-and-forget: persist() can wait on a permission prompt (Firefox) or never settle
-      // in headless browsers, and must not block onboarding.
       void requestPersistentStorage()
-
-      // 2. Seed default categories
       await categoryRepo.seedDefaultCategories(user.id)
 
-      // 3. Create initial account
       const openingMinor = parseAmountToMinor(openingBalanceStr || '0', baseCurrency)
       await accountRepo.create({
         userId: user.id,
@@ -58,12 +63,11 @@ export default function OnboardingScreen() {
         note: null,
         excludeFromNetWorth: false,
         icon: accountKind === 'cash' ? 'Banknote' : accountKind === 'wallet' ? 'Smartphone' : 'Landmark',
-        color: '#3b82f6',
+        color: '#0F766E',
         sortOrder: 0,
         archivedAt: null,
       })
 
-      // 4. Update profile and complete onboarding
       const updatedProfile = await profileRepo.update(user.id, {
         baseCurrency,
         locale: language === 'hi' ? 'hi-IN' : 'en-IN',
@@ -79,68 +83,100 @@ export default function OnboardingScreen() {
     }
   }
 
+  const handleSkip = async () => {
+    await handleFinish()
+  }
+
   return (
-    <div className="min-h-screen bg-surface flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-lg">
-        {/* Step indicator */}
+    <div className="min-h-dvh bg-surface flex flex-col justify-between items-center p-4 sm:p-6 transition-colors">
+      {/* Top Bar with Logo & Skip */}
+      <header className="w-full max-w-lg flex items-center justify-between py-2">
+        <div className="flex items-center gap-2">
+          <Logo size={32} className="shadow-xs rounded-xl" />
+          <BrandName className="text-lg text-text" />
+        </div>
+
+        {step < 3 && (
+          <button
+            type="button"
+            onClick={handleSkip}
+            className="text-xs font-semibold text-text-muted hover:text-text px-3 py-1.5 rounded-lg hover:bg-surface-overlay transition-colors"
+          >
+            {t('common.skip', 'Skip Setup')}
+          </button>
+        )}
+      </header>
+
+      {/* Main Content Area */}
+      <div className="w-full max-w-lg my-auto py-6">
+        {/* Progress Stepper Dots */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {[1, 2, 3].map((s) => (
             <div
               key={s}
               className={`h-2 rounded-full transition-all duration-300 ${
-                s === step ? 'w-8 bg-primary' : s < step ? 'w-2 bg-success' : 'w-2 bg-border'
+                s === step
+                  ? 'w-8 bg-primary shadow-xs'
+                  : s < step
+                  ? 'w-2.5 bg-success'
+                  : 'w-2 bg-border'
               }`}
             />
           ))}
         </div>
 
+        {/* STEP 1: Language & Currency */}
         {step === 1 && (
-          <Card className="animate-in fade-in zoom-in-95 duration-200">
-            <div className="text-center mb-6">
-              <div className="flex justify-center mx-auto mb-3">
-                <Logo size={56} className="shadow-md rounded-2xl" />
-              </div>
-              <h2 className="text-xl font-bold text-text">
+          <Card className="p-6 sm:p-8 rounded-3xl space-y-6 shadow-lg border-border/60">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-black text-text">
                 {t('onboarding.welcome', 'Welcome to')} <BrandName />
               </h2>
-              <p className="text-sm text-text-muted mt-1">
-                {t('onboarding.step1Desc', 'Choose your preferred language and base currency')}
+              <p className="text-xs sm:text-sm text-text-muted">
+                {t('onboarding.step1Desc', 'Choose your preferred language and base reporting currency')}
               </p>
             </div>
 
-            <div className="space-y-5">
-              <div>
-                <label className="text-sm font-medium text-text mb-2 block">
-                  {t('settings.language', 'Language')}
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleLanguageChange('en')}
-                    className={`min-h-[52px] p-3 rounded-xl border flex items-center justify-center font-medium transition-all ${
-                      language === 'en'
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
-                    }`}
-                  >
-                    English
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleLanguageChange('hi')}
-                    className={`min-h-[52px] p-3 rounded-xl border flex items-center justify-center font-medium transition-all ${
-                      language === 'hi'
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-surface-elevated text-text hover:bg-surface-overlay'
-                    }`}
-                  >
-                    हिन्दी (Hindi)
-                  </button>
-                </div>
-              </div>
+            {/* Language Selection Large Cards */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-text-muted block">
+                {t('settings.language', 'Language')}
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleLanguageChange('en')}
+                  className={`p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all ${
+                    language === 'en'
+                      ? 'border-primary ring-2 ring-primary/30 bg-primary/10 text-primary font-bold shadow-xs'
+                      : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay font-medium'
+                  }`}
+                >
+                  <span className="text-2xl" role="img" aria-label="UK flag">🇬🇧</span>
+                  <span className="text-sm">English</span>
+                </button>
 
+                <button
+                  type="button"
+                  onClick={() => handleLanguageChange('hi')}
+                  className={`p-4 rounded-2xl border flex flex-col items-center gap-2 transition-all ${
+                    language === 'hi'
+                      ? 'border-primary ring-2 ring-primary/30 bg-primary/10 text-primary font-bold shadow-xs'
+                      : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay font-medium'
+                  }`}
+                >
+                  <span className="text-2xl" role="img" aria-label="India flag">🇮🇳</span>
+                  <span className="font-hindi text-base">हिन्दी</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Base Currency Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-text-muted block">
+                {t('settings.baseCurrency', 'Base Currency')}
+              </label>
               <Select
-                label={t('settings.baseCurrency', 'Base Currency')}
                 value={baseCurrency}
                 onChange={(e) => setBaseCurrency(e.target.value)}
                 options={[
@@ -153,49 +189,75 @@ export default function OnboardingScreen() {
                   { value: 'JPY', label: 'JPY (¥) - Japanese Yen' },
                 ]}
               />
-
-              <Button
-                variant="primary"
-                className="w-full mt-4"
-                onClick={() => setStep(2)}
-              >
-                {t('common.continue', 'Continue')}
-              </Button>
             </div>
+
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              rightIcon={<ArrowRight size={18} />}
+              onClick={() => setStep(2)}
+            >
+              {t('common.continue', 'Continue')}
+            </Button>
           </Card>
         )}
 
+        {/* STEP 2: Primary Account Setup */}
         {step === 2 && (
-          <Card className="animate-in fade-in zoom-in-95 duration-200">
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-3">
+          <Card className="p-6 sm:p-8 rounded-3xl space-y-6 shadow-lg border-border/60">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto">
                 <Wallet size={24} />
               </div>
-              <h2 className="text-xl font-bold text-text">{t('onboarding.setupFirstAccount', 'Set up your first account')}</h2>
-              <p className="text-sm text-text-muted mt-1">
+              <h2 className="text-2xl font-black text-text">
+                {t('onboarding.setupFirstAccount', 'Set up your first account')}
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted">
                 {t('onboarding.step2Desc', 'Add your primary bank, cash in hand, or wallet')}
               </p>
             </div>
 
-            <div className="space-y-4">
+            {/* Large Option Cards for Account Kind */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { kind: 'bank' as const, label: 'Bank Account', icon: Landmark },
+                { kind: 'cash' as const, label: 'Cash in Hand', icon: Banknote },
+                { kind: 'wallet' as const, label: 'Digital Wallet', icon: Smartphone },
+                { kind: 'savings' as const, label: 'Savings Account', icon: PiggyBank },
+              ].map((opt) => {
+                const Icon = opt.icon
+                const isSelected = accountKind === opt.kind
+                return (
+                  <button
+                    key={opt.kind}
+                    type="button"
+                    onClick={() => {
+                      setAccountKind(opt.kind)
+                      if (!accountName || accountName === 'Main Bank' || accountName === 'Cash' || accountName === 'UPI Wallet') {
+                        setAccountName(opt.kind === 'cash' ? 'Cash' : opt.kind === 'wallet' ? 'UPI Wallet' : 'Main Bank')
+                      }
+                    }}
+                    className={`p-3 rounded-2xl border flex items-center gap-2.5 text-left transition-all ${
+                      isSelected
+                        ? 'border-primary ring-2 ring-primary/30 bg-primary/10 text-primary font-bold shadow-xs'
+                        : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay font-medium'
+                    }`}
+                  >
+                    <Icon size={18} className={isSelected ? 'text-primary' : 'text-text-muted'} />
+                    <span className="text-xs">{opt.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="space-y-3 pt-2">
               <Input
                 label={t('accounts.accountName', 'Account Name')}
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
                 placeholder="e.g. HDFC Bank, Cash Wallet"
                 required
-              />
-
-              <Select
-                label={t('accounts.accountKind', 'Account Type')}
-                value={accountKind}
-                onChange={(e) => setAccountKind(e.target.value as AccountKind)}
-                options={[
-                  { value: 'bank', label: 'Bank Account' },
-                  { value: 'cash', label: 'Cash in Hand' },
-                  { value: 'wallet', label: 'Digital Wallet (Paytm/UPI)' },
-                  { value: 'savings', label: 'Savings Account' },
-                ]}
               />
 
               <Input
@@ -207,53 +269,90 @@ export default function OnboardingScreen() {
                 placeholder="0.00"
                 helperText={t('accounts.openingBalanceHelper', 'Current balance as of today')}
               />
-
-              <div className="flex gap-3 pt-3">
-                <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                  {t('common.back', 'Back')}
-                </Button>
-                <Button variant="primary" onClick={() => setStep(3)} className="flex-1">
-                  {t('common.continue', 'Continue')}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {step === 3 && (
-          <Card className="animate-in fade-in zoom-in-95 duration-200 text-center">
-            <div className="w-12 h-12 bg-success/10 text-success rounded-full flex items-center justify-center mx-auto mb-3">
-              <Sparkles size={24} />
-            </div>
-            <h2 className="text-xl font-bold text-text">{t('onboarding.allSet', "You're all set!")}</h2>
-            <p className="text-sm text-text-muted mt-1">
-              {t('onboarding.readyMsg', 'We have prepared standard categories for food, bills, shopping, salary, and more. You can customize them anytime in Settings.')}
-            </p>
-
-            <div className="my-6 p-4 bg-surface rounded-xl border border-border text-left space-y-2 text-sm">
-              <div className="flex items-center gap-2 text-text">
-                <Check size={16} className="text-success" />
-                <span>{t('onboarding.offlineReady', '100% offline-first storage configured')}</span>
-              </div>
-              <div className="flex items-center gap-2 text-text">
-                <Check size={16} className="text-success" />
-                <span>{t('onboarding.categoriesConfigured', '18 curated categories ready')}</span>
-              </div>
-              <div className="flex items-center gap-2 text-text">
-                <Check size={16} className="text-success" />
-                <span>{t('onboarding.cloudSyncReady', 'Cloud sync standby')}</span>
-              </div>
             </div>
 
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(2)} className="flex-1" disabled={isLoading}>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setStep(1)}
+                leftIcon={<ArrowLeft size={18} />}
+                className="flex-1"
+              >
                 {t('common.back', 'Back')}
               </Button>
               <Button
                 variant="primary"
+                size="lg"
+                onClick={() => setStep(3)}
+                rightIcon={<ArrowRight size={18} />}
+                className="flex-1"
+              >
+                {t('common.continue', 'Continue')}
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* STEP 3: Celebratory Screen */}
+        {step === 3 && (
+          <Card className="p-6 sm:p-8 rounded-3xl space-y-6 shadow-xl border-amber-500/20 text-center relative overflow-hidden">
+            {/* Celebratory golden mesh glow */}
+            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-amber-500/20 blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full bg-primary/20 blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 space-y-2">
+              <div className="w-16 h-16 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded-3xl flex items-center justify-center mx-auto shadow-xs animate-bounce duration-1000">
+                <Sparkles size={32} />
+              </div>
+              <h2 className="text-3xl font-black text-text">
+                {t('onboarding.allSet', "You're all set!")}
+              </h2>
+              <p className="text-xs sm:text-sm text-text-muted max-w-sm mx-auto">
+                {t('onboarding.readyMsg', 'Your offline database and standard categories are ready. You are in total control.')}
+              </p>
+            </div>
+
+            {/* Checklist */}
+            <div className="relative z-10 p-4 rounded-2xl bg-surface-elevated border border-border/50 text-left space-y-2.5 text-xs">
+              <div className="flex items-center gap-2.5 text-text font-medium">
+                <div className="w-5 h-5 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+                  <Check size={12} />
+                </div>
+                <span>{t('onboarding.offlineReady', '100% offline-first Dexie database configured')}</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-text font-medium">
+                <div className="w-5 h-5 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+                  <Check size={12} />
+                </div>
+                <span>{t('onboarding.categoriesConfigured', '18 curated categories seeded')}</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-text font-medium">
+                <div className="w-5 h-5 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
+                  <Check size={12} />
+                </div>
+                <span>{accountName} initialized with {openingBalanceStr} {baseCurrency}</span>
+              </div>
+            </div>
+
+            <div className="relative z-10 flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setStep(2)}
+                leftIcon={<ArrowLeft size={18} />}
+                className="flex-1"
+                disabled={isLoading}
+              >
+                {t('common.back', 'Back')}
+              </Button>
+              <Button
+                variant="primary"
+                size="lg"
                 onClick={handleFinish}
                 isLoading={isLoading}
-                className="flex-1"
+                rightIcon={<Sparkles size={18} />}
+                className="flex-1 bg-gradient-to-r from-primary to-teal-700 shadow-md"
               >
                 {t('onboarding.startUsing', 'Start Using Sanchay')}
               </Button>
@@ -261,6 +360,11 @@ export default function OnboardingScreen() {
           </Card>
         )}
       </div>
+
+      {/* Footer */}
+      <footer className="w-full max-w-lg py-2 text-center text-xs text-text-muted">
+        <span>© {new Date().getFullYear()} <BrandName className="text-xs font-semibold" /></span>
+      </footer>
     </div>
   )
 }

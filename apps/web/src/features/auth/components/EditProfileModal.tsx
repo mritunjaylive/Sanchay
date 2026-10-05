@@ -128,7 +128,7 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:scale-105 transition-transform"
+              className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 transition-transform"
               title={t('profile.uploadPic', 'Upload Profile Picture (max 100 KB)')}
               aria-label="Upload photo"
             >

@@ -27,7 +27,7 @@ export function LanguageSwitcher({ variant = 'pill', className = '' }: LanguageS
           onClick={() => setLanguage('en')}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
             currentLang === 'en'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'text-text-muted hover:text-text hover:bg-surface-overlay'
           }`}
           aria-label="Switch to English"
@@ -39,7 +39,7 @@ export function LanguageSwitcher({ variant = 'pill', className = '' }: LanguageS
           onClick={() => setLanguage('hi')}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
             currentLang === 'hi'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'text-text-muted hover:text-text hover:bg-surface-overlay'
           }`}
           aria-label="हिन्दी में बदलें"
@@ -62,7 +62,7 @@ export function LanguageSwitcher({ variant = 'pill', className = '' }: LanguageS
           onClick={() => setLanguage('en')}
           className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
             currentLang === 'en'
-              ? 'bg-primary text-white shadow-xs'
+              ? 'bg-primary text-primary-foreground shadow-xs'
               : 'text-text-muted hover:text-text hover:bg-surface-overlay'
           }`}
           aria-label="English"
@@ -74,7 +74,7 @@ export function LanguageSwitcher({ variant = 'pill', className = '' }: LanguageS
           onClick={() => setLanguage('hi')}
           className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
             currentLang === 'hi'
-              ? 'bg-primary text-white shadow-xs'
+              ? 'bg-primary text-primary-foreground shadow-xs'
               : 'text-text-muted hover:text-text hover:bg-surface-overlay'
           }`}
           aria-label="हिन्दी"

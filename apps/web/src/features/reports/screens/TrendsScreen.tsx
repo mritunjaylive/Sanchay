@@ -1,17 +1,37 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
+import {
+  ComposedChart,
+  Area,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts'
 import { db } from '../../../db/db'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
 import { calculateMonthlyTrends } from '../../../domain/reports'
 import { subtractOneMonth } from '../../../domain/dates'
 import { formatMoney } from '../../../lib/money'
-import { Card, CardHeader, CardTitle, CardContent } from '../../../ui'
+import {
+  Page,
+  PageHeader,
+  Card,
+  Amount,
+  Button,
+  EmptyState,
+  SkeletonCard,
+} from '../../../ui'
 import { ReportHeader } from '../components/ReportHeader'
+import { Table as TableIcon, BarChart3, TrendingUp, TrendingDown, LineChart } from 'lucide-react'
 
 export default function TrendsScreen() {
   const { t } = useTranslation()
   const { baseCurrency, locale } = useSettingsStore()
+  const [viewMode, setViewMode] = useState<'visual' | 'table'>('visual')
 
   const todayStr = new Date().toISOString().substring(0, 10)
   const currentMonth = todayStr.substring(0, 7)
@@ -34,102 +54,224 @@ export default function TrendsScreen() {
     return calculateMonthlyTrends(transactions, past6Months)
   }, [transactions, past6Months])
 
-  const maxAmount = useMemo(() => {
-    let max = 0
-    for (const t of trends) {
-      if (t.incomeMinor > max) max = t.incomeMinor
-      if (t.expenseMinor > max) max = t.expenseMinor
-    }
-    return Math.max(1, max)
+  const chartData = useMemo(() => {
+    return trends.map((item) => ({
+      month: item.month,
+      monthLabel: item.month.substring(5), // MM
+      income: item.incomeMinor,
+      expense: item.expenseMinor,
+      savings: item.incomeMinor - item.expenseMinor,
+    }))
   }, [trends])
 
+  const totals = useMemo(() => {
+    const totalIncome = trends.reduce((acc, t) => acc + t.incomeMinor, 0)
+    const totalExpense = trends.reduce((acc, t) => acc + t.expenseMinor, 0)
+    const count = trends.length || 1
+    return {
+      avgIncome: Math.round(totalIncome / count),
+      avgExpense: Math.round(totalExpense / count),
+      netSavings: totalIncome - totalExpense,
+    }
+  }, [trends])
+
+  if (transactions === undefined) {
+    return (
+      <Page width="default" className="space-y-6">
+        <ReportHeader />
+        <SkeletonCard className="h-40" />
+        <SkeletonCard className="h-64" />
+      </Page>
+    )
+  }
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 max-w-4xl mx-auto">
+    <Page width="default" className="space-y-6">
       <ReportHeader />
 
-      <div>
-        <h1 className="text-xl font-bold text-text">{t('reports.monthlyTrends', 'Monthly Cash Flow Trends')}</h1>
-        <p className="text-xs text-text-muted mt-0.5">
-          Income vs Expense comparisons across the last 6 months
-        </p>
+      <PageHeader
+        title={t('reports.monthlyTrends', 'Monthly Cash Flow Trends')}
+        subtitle="Income vs Expense comparisons across the last 6 months"
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'visual' ? 'table' : 'visual')}
+            aria-label={viewMode === 'visual' ? 'View as table' : 'View chart'}
+            className="h-9 px-2.5"
+          >
+            {viewMode === 'visual' ? <TableIcon size={16} /> : <BarChart3 size={16} />}
+          </Button>
+        }
+      />
+
+      {/* 6-Month Summary Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="p-4 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between text-xs text-text-muted">
+            <span className="font-semibold uppercase tracking-wider">Avg Monthly Income</span>
+            <div className="w-7 h-7 rounded-lg bg-success/10 text-success flex items-center justify-center">
+              <TrendingUp size={14} />
+            </div>
+          </div>
+          <Amount
+            minor={totals.avgIncome}
+            currency={baseCurrency}
+            tone="income"
+            showSign={false}
+            size="lg"
+            className="font-black block"
+          />
+        </Card>
+
+        <Card className="p-4 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between text-xs text-text-muted">
+            <span className="font-semibold uppercase tracking-wider">Avg Monthly Expense</span>
+            <div className="w-7 h-7 rounded-lg bg-surface-overlay text-text-muted flex items-center justify-center">
+              <TrendingDown size={14} />
+            </div>
+          </div>
+          <Amount
+            minor={totals.avgExpense}
+            currency={baseCurrency}
+            tone="neutral"
+            showSign={false}
+            size="lg"
+            className="font-black block"
+          />
+        </Card>
+
+        <Card className="p-4 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between text-xs text-text-muted">
+            <span className="font-semibold uppercase tracking-wider">6-Month Net Savings</span>
+            <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <LineChart size={14} />
+            </div>
+          </div>
+          <Amount
+            minor={totals.netSavings}
+            currency={baseCurrency}
+            tone={totals.netSavings >= 0 ? 'income' : 'danger'}
+            showSign={totals.netSavings < 0}
+            size="lg"
+            className="font-black block"
+          />
+        </Card>
       </div>
 
-      {/* Visual Bar Chart */}
-      <Card className="p-6">
-        <div className="flex items-center justify-end gap-4 text-xs font-semibold mb-6">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-xs bg-success" />
-            <span>{t('reports.income', 'Income')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-xs bg-danger" />
-            <span>{t('reports.expenses', 'Expenses')}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-6 gap-2 sm:gap-6 items-end h-64 border-b border-border pb-2">
-          {trends.map((item) => {
-            const incomeHeight = (item.incomeMinor / maxAmount) * 100
-            const expenseHeight = (item.expenseMinor / maxAmount) * 100
-
-            return (
-              <div key={item.month} className="flex flex-col items-center gap-2 h-full justify-end">
-                <div className="flex items-end gap-1 w-full justify-center h-48">
-                  {/* Income Bar */}
-                  <div
-                    className="w-1/2 max-w-[20px] bg-success rounded-t-sm transition-all duration-300"
-                    style={{ height: `${Math.max(4, incomeHeight)}%` }}
-                    title={`Income: ${formatMoney(item.incomeMinor, baseCurrency, locale)}`}
-                  />
-                  {/* Expense Bar */}
-                  <div
-                    className="w-1/2 max-w-[20px] bg-danger rounded-t-sm transition-all duration-300"
-                    style={{ height: `${Math.max(4, expenseHeight)}%` }}
-                    title={`Expense: ${formatMoney(item.expenseMinor, baseCurrency, locale)}`}
-                  />
+      {trends.length === 0 ? (
+        <EmptyState
+          icon={<LineChart size={32} />}
+          title="No trend data available"
+          description="Log income and expense transactions to see historical trends here."
+        />
+      ) : (
+        <div className="space-y-6">
+          {viewMode === 'visual' ? (
+            <Card className="p-6 rounded-2xl space-y-4">
+              {/* Legend */}
+              <div className="flex items-center justify-between text-xs pb-2 border-b border-border/40">
+                <span className="font-bold text-text-muted uppercase tracking-wider">6-Month Trajectory</span>
+                <div className="flex items-center gap-4 font-semibold">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-success/80" />
+                    <span className="text-text">{t('reports.income', 'Income')} (Area)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-xs bg-[#0F766E]" />
+                    <span className="text-text">{t('reports.expenses', 'Expenses')} (Bar)</span>
+                  </div>
                 </div>
-                <span className="text-[11px] font-semibold text-text-muted rotate-[-30deg] sm:rotate-0 mt-1">
-                  {item.month.substring(5)}
-                </span>
               </div>
-            )
-          })}
-        </div>
-      </Card>
 
-      {/* Accessible Data Table */}
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full text-xs text-left">
-          <thead className="bg-surface-overlay text-text-muted uppercase text-[10px]">
-            <tr>
-              <th className="p-3">Month</th>
-              <th className="p-3">Income</th>
-              <th className="p-3">Expense</th>
-              <th className="p-3 text-right">Net Savings</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50 text-text">
-            {trends.map((item) => (
-              <tr key={item.month} className="hover:bg-surface-overlay/50">
-                <td className="p-3 font-semibold">{item.month}</td>
-                <td className="p-3 text-success font-medium">
-                  +{formatMoney(item.incomeMinor, baseCurrency, locale)}
-                </td>
-                <td className="p-3 text-danger font-medium">
-                  -{formatMoney(item.expenseMinor, baseCurrency, locale)}
-                </td>
-                <td
-                  className={`p-3 text-right font-bold ${
-                    item.netMinor >= 0 ? 'text-success' : 'text-danger'
-                  }`}
-                >
-                  {formatMoney(item.netMinor, baseCurrency, locale)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-    </div>
+              {/* Recharts ComposedChart: Area (Income) + Bar (Expense) */}
+              <div className="h-72 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="incomeTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.3} />
+                    <XAxis
+                      dataKey="monthLabel"
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(val) => formatMoney(val, baseCurrency, locale)}
+                    />
+                    <Tooltip
+                      formatter={(val: number) => formatMoney(val, baseCurrency, locale)}
+                      contentStyle={{
+                        backgroundColor: 'var(--color-surface-elevated)',
+                        borderColor: 'var(--color-border)',
+                        borderRadius: '0.75rem',
+                        fontSize: '12px',
+                        color: 'var(--color-text)',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="income"
+                      name="Income"
+                      stroke="#10B981"
+                      strokeWidth={2.5}
+                      fillOpacity={1}
+                      fill="url(#incomeTrendGrad)"
+                    />
+                    <Bar
+                      dataKey="expense"
+                      name="Expense"
+                      fill="#0F766E"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-0 rounded-2xl overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-surface-overlay text-text-muted uppercase text-[10px] tracking-wider border-b border-border/50">
+                  <tr>
+                    <th className="p-3.5">Month</th>
+                    <th className="p-3.5">Income</th>
+                    <th className="p-3.5">Expense</th>
+                    <th className="p-3.5 text-right">Net Savings</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40 text-text">
+                  {trends.map((item) => {
+                    const net = item.incomeMinor - item.expenseMinor
+                    return (
+                      <tr key={item.month} className="hover:bg-surface-overlay/40 transition-colors">
+                        <td className="p-3.5 font-bold">{item.month}</td>
+                        <td className="p-3.5 text-success font-semibold">
+                          +{formatMoney(item.incomeMinor, baseCurrency, locale)}
+                        </td>
+                        <td className="p-3.5 text-text font-semibold">
+                          -{formatMoney(item.expenseMinor, baseCurrency, locale)}
+                        </td>
+                        <td className={`p-3.5 text-right font-black ${net >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {net >= 0 ? '+' : ''}{formatMoney(net, baseCurrency, locale)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      )}
+    </Page>
   )
 }
