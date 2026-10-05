@@ -6,12 +6,12 @@ import { cn } from '../lib/cn'
 export interface ToastItem {
   id: string
   message: string
-  type?: 'success' | 'error' | 'info'
-  durationMs?: number
+  type?: 'success' | 'error' | 'info' | undefined
+  durationMs?: number | undefined
   action?: {
     label: string
     onClick: () => void
-  }
+  } | undefined
 }
 
 interface ToastStore {
@@ -39,6 +39,41 @@ export const useToastStore = create<ToastStore>((set) => ({
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }))
   },
 }))
+
+type ToastOptions = number | { duration?: number }
+
+function resolveDuration(opts?: ToastOptions): number | undefined {
+  if (typeof opts === 'number') return opts
+  if (opts && typeof opts.duration === 'number') return opts.duration
+  return undefined
+}
+
+export const toast = {
+  success: (message: string, options?: ToastOptions) => {
+    const durationMs = resolveDuration(options)
+    return useToastStore.getState().showToast({
+      message,
+      type: 'success',
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    })
+  },
+  error: (message: string, options?: ToastOptions) => {
+    const durationMs = resolveDuration(options)
+    return useToastStore.getState().showToast({
+      message,
+      type: 'error',
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    })
+  },
+  info: (message: string, options?: ToastOptions) => {
+    const durationMs = resolveDuration(options)
+    return useToastStore.getState().showToast({
+      message,
+      type: 'info',
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    })
+  },
+}
 
 export function ToastContainer() {
   const { toasts, dismissToast } = useToastStore()

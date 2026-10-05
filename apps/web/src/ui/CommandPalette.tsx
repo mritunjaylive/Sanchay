@@ -23,6 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { useBackClose } from './useBackClose'
 
 export interface CommandPaletteProps {
   isOpen: boolean
@@ -39,6 +40,7 @@ interface CommandItem {
 }
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+  useBackClose(isOpen, onClose)
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')

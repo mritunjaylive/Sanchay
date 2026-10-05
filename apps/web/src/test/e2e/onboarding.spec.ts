@@ -36,6 +36,6 @@ test.describe('Onboarding Flow (F-010 to F-014)', () => {
     // Redirected to home dashboard
     await expect(page).toHaveURL(/\/$/, { timeout: 15000 })
     expect(problems, 'unexpected console errors').toEqual([])
-    await expect(page.locator('text=Sanchay').first()).toBeVisible()
+    await expect(page.locator('header, aside, main').getByText('Sanchay').locator('visible=true').first()).toBeVisible()
   })
 })

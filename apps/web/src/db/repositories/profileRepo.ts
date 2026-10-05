@@ -1,6 +1,11 @@
 /**
  * db/repositories/profileRepo.ts — User profile repository.
  *
+ * P0-B: Critical fix — profile.id MUST equal userId.
+ * The previous code used uuidv7() for new profiles, which violated the
+ * server FK constraint (profiles.id references auth.users.id), causing
+ * remote inserts to fail and the onboarding loop.
+ *
  * All writes go through this repository and record an outbox entry.
  *
  * @see Sanchay_spec.md section 7.2, 7.5
@@ -8,7 +13,6 @@
 
 import { db } from '../db'
 import { upsertWithOutbox } from '../outboxHelper'
-import { uuidv7 } from '../../lib/ids'
 import type { Profile } from '@sanchay/shared'
 
 export const profileRepo = {
@@ -27,7 +31,8 @@ export const profileRepo = {
 
     const updated: Profile = {
       ...(existing ?? {
-        id: uuidv7(),
+        // P0-B: id MUST equal userId (references auth.users.id)
+        id: userId,
         userId,
         displayName: null,
         baseCurrency: 'INR',

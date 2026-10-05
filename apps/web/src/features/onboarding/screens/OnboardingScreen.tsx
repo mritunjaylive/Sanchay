@@ -7,6 +7,7 @@ import { accountRepo } from '../../../db/repositories/accountRepo'
 import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { profileRepo } from '../../../db/repositories/profileRepo'
 import { requestPersistentStorage } from '../../../db/db'
+import { db } from '../../../db/db'
 import { parseAmountToMinor } from '../../../lib/money'
 import {
   Globe,
@@ -31,7 +32,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(1)
   const [language, setLanguage] = useState<'en' | 'hi'>('en')
   const [baseCurrency, setBaseCurrency] = useState('INR')
-  const [accountName, setAccountName] = useState('Main Bank')
+  const [accountName, setAccountName] = useState(t('onboarding.defaultAccountName', 'Main Bank'))
   const [accountKind, setAccountKind] = useState<AccountKind>('bank')
   const [openingBalanceStr, setOpeningBalanceStr] = useState('0')
   const [isLoading, setIsLoading] = useState(false)
@@ -39,6 +40,8 @@ export default function OnboardingScreen() {
   const handleLanguageChange = (lang: 'en' | 'hi') => {
     setLanguage(lang)
     void i18n.changeLanguage(lang)
+    document.documentElement.lang = lang
+    localStorage.setItem('i18nextLng', lang)
   }
 
   const handleFinish = async () => {
@@ -47,26 +50,35 @@ export default function OnboardingScreen() {
 
     try {
       void requestPersistentStorage()
-      await categoryRepo.seedDefaultCategories(user.id)
 
-      const openingMinor = parseAmountToMinor(openingBalanceStr || '0', baseCurrency)
-      await accountRepo.create({
-        userId: user.id,
-        name: accountName.trim() || 'Main Account',
-        kind: accountKind,
-        currency: baseCurrency,
-        openingBalanceMinor: openingMinor,
-        openingDate: new Date().toISOString().substring(0, 10),
-        creditLimitMinor: null,
-        statementDay: null,
-        dueDay: null,
-        note: null,
-        excludeFromNetWorth: false,
-        icon: accountKind === 'cash' ? 'Banknote' : accountKind === 'wallet' ? 'Smartphone' : 'Landmark',
-        color: '#0F766E',
-        sortOrder: 0,
-        archivedAt: null,
-      })
+      // P0-B: Only seed categories if none exist yet (after hydration may have pulled them)
+      const existingCategories = await db.categories.filter((c) => !c.deletedAt && c.userId === user.id).count()
+      if (existingCategories === 0) {
+        await categoryRepo.seedDefaultCategories(user.id)
+      }
+
+      // P0-B: Only create starter account if user has no accounts yet
+      const existingAccounts = await db.accounts.filter((a) => !a.deletedAt && a.userId === user.id).count()
+      if (existingAccounts === 0) {
+        const openingMinor = parseAmountToMinor(openingBalanceStr || '0', baseCurrency)
+        await accountRepo.create({
+          userId: user.id,
+          name: accountName.trim() || t('onboarding.defaultAccountName', 'Main Account'),
+          kind: accountKind,
+          currency: baseCurrency,
+          openingBalanceMinor: openingMinor,
+          openingDate: new Date().toISOString().substring(0, 10),
+          creditLimitMinor: null,
+          statementDay: null,
+          dueDay: null,
+          note: null,
+          excludeFromNetWorth: false,
+          icon: accountKind === 'cash' ? 'Banknote' : accountKind === 'wallet' ? 'Smartphone' : 'Landmark',
+          color: '#0F766E',
+          sortOrder: 0,
+          archivedAt: null,
+        })
+      }
 
       const updatedProfile = await profileRepo.update(user.id, {
         baseCurrency,
@@ -74,8 +86,12 @@ export default function OnboardingScreen() {
         onboardedAt: new Date().toISOString(),
       })
 
+      // Set the per-user onboarded hint so offline relaunches don't flash onboarding
+      localStorage.setItem(`sanchay_onboarded_${user.id}`, '1')
+
       setProfile(updatedProfile)
-      navigate('/')
+      // P0-B: use replace so Back doesn't return to onboarding
+      navigate('/', { replace: true })
     } catch (err) {
       console.error('Failed to complete onboarding:', err)
     } finally {
@@ -84,7 +100,31 @@ export default function OnboardingScreen() {
   }
 
   const handleSkip = async () => {
-    await handleFinish()
+    if (!user) return
+    setIsLoading(true)
+    try {
+      void requestPersistentStorage()
+
+      // Even on skip: seed categories if none exist
+      const existingCategories = await db.categories.filter((c) => !c.deletedAt && c.userId === user.id).count()
+      if (existingCategories === 0) {
+        await categoryRepo.seedDefaultCategories(user.id)
+      }
+
+      const updatedProfile = await profileRepo.update(user.id, {
+        baseCurrency,
+        locale: language === 'hi' ? 'hi-IN' : 'en-IN',
+        onboardedAt: new Date().toISOString(),
+      })
+
+      localStorage.setItem(`sanchay_onboarded_${user.id}`, '1')
+      setProfile(updatedProfile)
+      navigate('/', { replace: true })
+    } catch (err) {
+      console.error('Failed to skip onboarding:', err)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -99,8 +139,9 @@ export default function OnboardingScreen() {
         {step < 3 && (
           <button
             type="button"
-            onClick={handleSkip}
-            className="text-xs font-semibold text-text-muted hover:text-text px-3 py-1.5 rounded-lg hover:bg-surface-overlay transition-colors"
+            onClick={() => void handleSkip()}
+            disabled={isLoading}
+            className="text-xs font-semibold text-text-muted hover:text-text px-3 py-1.5 rounded-lg hover:bg-surface-overlay transition-colors disabled:opacity-50"
           >
             {t('common.skip', 'Skip Setup')}
           </button>
@@ -152,7 +193,7 @@ export default function OnboardingScreen() {
                       : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay font-medium'
                   }`}
                 >
-                  <span className="text-2xl" role="img" aria-label="UK flag">🇬🇧</span>
+                  <span className="text-2xl" role="img" aria-label={t('onboarding.ukFlagLabel', 'UK flag')}>🇬🇧</span>
                   <span className="text-sm">English</span>
                 </button>
 
@@ -165,7 +206,7 @@ export default function OnboardingScreen() {
                       : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay font-medium'
                   }`}
                 >
-                  <span className="text-2xl" role="img" aria-label="India flag">🇮🇳</span>
+                  <span className="text-2xl" role="img" aria-label={t('onboarding.indiaFlagLabel', 'India flag')}>🇮🇳</span>
                   <span className="font-hindi text-base">हिन्दी</span>
                 </button>
               </div>
@@ -221,10 +262,10 @@ export default function OnboardingScreen() {
             {/* Large Option Cards for Account Kind */}
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { kind: 'bank' as const, label: 'Bank Account', icon: Landmark },
-                { kind: 'cash' as const, label: 'Cash in Hand', icon: Banknote },
-                { kind: 'wallet' as const, label: 'Digital Wallet', icon: Smartphone },
-                { kind: 'savings' as const, label: 'Savings Account', icon: PiggyBank },
+                { kind: 'bank' as const, label: t('accounts.kind.bank', 'Bank Account'), icon: Landmark },
+                { kind: 'cash' as const, label: t('accounts.kind.cash', 'Cash in Hand'), icon: Banknote },
+                { kind: 'wallet' as const, label: t('accounts.kind.wallet', 'Digital Wallet'), icon: Smartphone },
+                { kind: 'savings' as const, label: t('accounts.kind.savings', 'Savings Account'), icon: PiggyBank },
               ].map((opt) => {
                 const Icon = opt.icon
                 const isSelected = accountKind === opt.kind
@@ -234,8 +275,14 @@ export default function OnboardingScreen() {
                     type="button"
                     onClick={() => {
                       setAccountKind(opt.kind)
-                      if (!accountName || accountName === 'Main Bank' || accountName === 'Cash' || accountName === 'UPI Wallet') {
-                        setAccountName(opt.kind === 'cash' ? 'Cash' : opt.kind === 'wallet' ? 'UPI Wallet' : 'Main Bank')
+                      if (!accountName || accountName === t('onboarding.defaultAccountName', 'Main Bank') || accountName === 'Cash' || accountName === 'UPI Wallet') {
+                        setAccountName(
+                          opt.kind === 'cash'
+                            ? t('onboarding.cashAccountName', 'Cash')
+                            : opt.kind === 'wallet'
+                            ? t('onboarding.walletAccountName', 'UPI Wallet')
+                            : t('onboarding.defaultAccountName', 'Main Bank'),
+                        )
                       }
                     }}
                     className={`p-3 rounded-2xl border flex items-center gap-2.5 text-left transition-all ${
@@ -256,7 +303,7 @@ export default function OnboardingScreen() {
                 label={t('accounts.accountName', 'Account Name')}
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
-                placeholder="e.g. HDFC Bank, Cash Wallet"
+                placeholder={t('accounts.accountNamePlaceholder', 'e.g. HDFC Bank, Cash Wallet')}
                 required
               />
 
@@ -331,7 +378,14 @@ export default function OnboardingScreen() {
                 <div className="w-5 h-5 rounded-full bg-success/15 text-success flex items-center justify-center shrink-0">
                   <Check size={12} />
                 </div>
-                <span>{accountName} initialized with {openingBalanceStr} {baseCurrency}</span>
+                {/* P1-D: i18n the account summary line — no concatenated sentence */}
+                <span>
+                  {t('onboarding.accountInitialized', '{{accountName}} initialized with {{balance}} {{currency}}', {
+                    accountName: accountName,
+                    balance: openingBalanceStr,
+                    currency: baseCurrency,
+                  })}
+                </span>
               </div>
             </div>
 
@@ -349,7 +403,7 @@ export default function OnboardingScreen() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={handleFinish}
+                onClick={() => void handleFinish()}
                 isLoading={isLoading}
                 rightIcon={<Sparkles size={18} />}
                 className="flex-1 bg-gradient-to-r from-primary to-teal-700 shadow-md"

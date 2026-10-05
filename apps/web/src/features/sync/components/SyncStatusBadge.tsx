@@ -1,8 +1,10 @@
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSyncStore } from '../stores/syncStore'
 import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 import type { SyncStatus } from '@sanchay/shared'
+import { SyncDiagnosticsModal } from './SyncDiagnosticsModal'
 
 const statusConfig: Record<SyncStatus, {
   icon: React.ElementType
@@ -20,6 +22,7 @@ const statusConfig: Record<SyncStatus, {
 export function SyncStatusBadge() {
   const { t } = useTranslation()
   const { status, pendingCount } = useSyncStore()
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const config = statusConfig[status]
   const Icon = config.icon
 
@@ -29,19 +32,29 @@ export function SyncStatusBadge() {
       : t(config.labelKey)
 
   return (
-    <button
-      type="button"
-      aria-label={`Sync status: ${label}`}
-      className={cn(
-        'flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md hover:bg-surface-overlay transition-colors',
-        config.colorClass,
+    <>
+      <button
+        type="button"
+        onClick={() => setIsModalOpen(true)}
+        aria-label={`Sync status: ${label}`}
+        className={cn(
+          'flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md hover:bg-surface-overlay transition-colors cursor-pointer',
+          config.colorClass,
+        )}
+      >
+        <Icon
+          size={12}
+          className={cn(status === 'syncing' && 'animate-spin')}
+        />
+        <span className="hidden sm:inline">{label}</span>
+      </button>
+
+      {isModalOpen && (
+        <SyncDiagnosticsModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+        />
       )}
-    >
-      <Icon
-        size={12}
-        className={cn(status === 'syncing' && 'animate-spin')}
-      />
-      <span className="hidden sm:inline">{label}</span>
-    </button>
+    </>
   )
 }

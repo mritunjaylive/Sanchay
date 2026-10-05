@@ -24,9 +24,13 @@ export const outboxEntrySchema = z.object({
   op: z.enum(['upsert', 'delete']),
   snapshot: z.record(z.unknown()), // the full row at time of write
   updatedAt: z.string().datetime(),
-  attempt: z.number().int().default(0),
+  attempt: z.number().int().optional().default(0),
+  attempts: z.number().int().optional().default(0),
+  lastError: z.string().nullable().optional().default(null),
+  lastAttemptAt: z.string().datetime().nullable().optional().default(null),
+  status: z.enum(['pending', 'failed', 'blocked']).optional().default('pending'),
 })
-export type OutboxEntry = z.infer<typeof outboxEntrySchema>
+export type OutboxEntry = z.input<typeof outboxEntrySchema>
 
 /** Sync state cursor stored locally. */
 export const syncStateSchema = z.object({

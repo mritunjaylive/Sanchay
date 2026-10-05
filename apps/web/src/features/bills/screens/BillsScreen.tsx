@@ -502,13 +502,13 @@ export default function BillsScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t('transaction.type', 'Type')}
+              label={t('transactions.type', 'Type')}
               value={type}
               onChange={(e) => setType(e.target.value as TransactionType)}
               options={[
-                { value: 'expense', label: 'Expense' },
-                { value: 'income', label: 'Income' },
-                { value: 'transfer', label: 'Transfer' },
+                { value: 'expense', label: t('transactions.expense', 'Expense') },
+                { value: 'income', label: t('transactions.income', 'Income') },
+                { value: 'transfer', label: t('transactions.transfer', 'Transfer') },
               ]}
             />
 

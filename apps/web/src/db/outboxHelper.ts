@@ -51,6 +51,9 @@ export async function upsertWithOutbox<T extends SyncableEntity>(
         snapshot,
         updatedAt,
         attempt: 0,
+        attempts: 0,
+        lastError: null,
+        status: 'pending',
       })
     } else {
       await db.outbox.add({
@@ -60,6 +63,10 @@ export async function upsertWithOutbox<T extends SyncableEntity>(
         snapshot,
         updatedAt,
         attempt: 0,
+        attempts: 0,
+        lastError: null,
+        lastAttemptAt: null,
+        status: 'pending',
       })
     }
   })

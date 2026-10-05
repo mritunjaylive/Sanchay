@@ -1,14 +1,20 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../stores/authStore'
+import type { AuthErrorCode } from '../stores/authStore'
 import { Button, Input, LanguageSwitcher, Logo, BrandName } from '../../../ui'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 
 export default function SignInScreen() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { signInWithEmail, signInWithGoogle, signInOffline, isLoading, error, clearError } = useAuthStore()
+  const location = useLocation()
+  const { signInWithEmail, signInWithGoogle, signInOffline, isSubmitting, resendConfirmation, error, clearError } =
+    useAuthStore()
+
+  // Redirect to intended destination after login
+  const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? '/'
 
   // Only show offline demo mode button in local dev when not using a deployed/cloud Supabase instance
   const isDeployedOrCloudSupabase =
@@ -21,11 +27,31 @@ export default function SignInScreen() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [errorCode, setErrorCode] = useState<AuthErrorCode | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  /** Map typed error code to a translated user-facing message */
+  function getErrorMessage(code: AuthErrorCode | null): string | null {
+    if (!code) return null
+    switch (code) {
+      case 'invalid_credentials':
+        return t('auth.errors.invalidCredentials', 'Incorrect email or password. Please try again.')
+      case 'email_not_confirmed':
+        return t('auth.errors.emailNotConfirmed', 'Please confirm your email address before signing in.')
+      case 'network':
+        return t('auth.errors.network', 'You appear to be offline. Check your connection and try again.')
+      case 'rate_limited':
+        return t('auth.errors.rateLimited', 'Too many attempts. Please wait a moment before trying again.')
+      default:
+        return t('auth.errors.unknown', 'Something went wrong. Please try again.')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
+    setErrorCode(null)
     setFormError(null)
 
     if (!email || !password) {
@@ -33,32 +59,56 @@ export default function SignInScreen() {
       return
     }
 
-    try {
-      await signInWithEmail(email, password)
-      navigate('/')
-    } catch {
-      // Handled in store
+    const result = await signInWithEmail(email, password)
+
+    if (result.error) {
+      setErrorCode(result.error)
+      // Move focus to error alert for screen readers
+      const alertEl = document.getElementById('signin-error-alert')
+      alertEl?.focus()
+    } else {
+      navigate(from, { replace: true })
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter') {
+      void handleSubmit(e as unknown as React.FormEvent)
     }
   }
 
   const handleGoogle = async () => {
     clearError()
-    try {
-      await signInWithGoogle()
-    } catch {
-      // Handled in store
-    }
+    setErrorCode(null)
+    await signInWithGoogle()
+    // Google OAuth redirects to /auth/callback — no navigation needed here
   }
 
   const handleOffline = async () => {
     clearError()
-    try {
-      await signInOffline()
-      navigate('/')
-    } catch {
-      // Handled in store
+    setErrorCode(null)
+    await signInOffline()
+    navigate('/', { replace: true })
+  }
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || !email) return
+    const { error: resendError } = await resendConfirmation(email)
+    if (!resendError) {
+      setResendCooldown(30)
+      const interval = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
     }
   }
+
+  const displayedError = formError ?? getErrorMessage(errorCode) ?? (error ? t('auth.errors.unknown', 'Something went wrong. Please try again.') : null)
 
   return (
     <div className="w-full max-w-md mx-auto p-2 sm:p-6 lg:p-0 space-y-6">
@@ -75,15 +125,35 @@ export default function SignInScreen() {
         </div>
       </div>
 
-      {(error || formError) && (
-        <div className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-xl flex items-center gap-2.5 text-danger text-sm">
-          <AlertCircle size={18} className="shrink-0" />
-          <span>{formError || error}</span>
+      {displayedError && (
+        <div
+          id="signin-error-alert"
+          role="alert"
+          tabIndex={-1}
+          className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-xl flex flex-col gap-2 text-danger text-sm"
+        >
+          <div className="flex items-center gap-2.5">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{displayedError}</span>
+          </div>
+          {errorCode === 'email_not_confirmed' && email && (
+            <button
+              type="button"
+              onClick={() => void handleResend()}
+              disabled={resendCooldown > 0}
+              className="text-xs underline self-start disabled:opacity-50"
+            >
+              {resendCooldown > 0
+                ? t('auth.resendCooldown', 'Resend in {{seconds}}s', { seconds: resendCooldown })
+                : t('auth.resendConfirmation', 'Resend confirmation email')}
+            </button>
+          )}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-4" noValidate>
         <Input
+          id="signin-email"
           type="email"
           label={t('auth.email', 'Email Address')}
           placeholder="name@example.com"
@@ -95,6 +165,7 @@ export default function SignInScreen() {
         />
 
         <Input
+          id="signin-password"
           type="password"
           label={t('auth.password', 'Password')}
           placeholder="••••••••"
@@ -114,7 +185,14 @@ export default function SignInScreen() {
           </Link>
         </div>
 
-        <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
+        <Button
+          id="signin-submit"
+          type="submit"
+          variant="primary"
+          className="w-full"
+          isLoading={isSubmitting}
+          disabled={isSubmitting}
+        >
           {t('auth.signIn', 'Sign In')}
         </Button>
       </form>
@@ -129,11 +207,12 @@ export default function SignInScreen() {
       </div>
 
       <Button
+        id="signin-google"
         type="button"
         variant="secondary"
         className="w-full"
-        onClick={handleGoogle}
-        isLoading={isLoading}
+        onClick={() => void handleGoogle()}
+        disabled={isSubmitting}
       >
         <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
           <path
@@ -159,11 +238,12 @@ export default function SignInScreen() {
       {showOfflineMode && (
         <div className="mt-3">
           <Button
+            id="signin-offline"
             type="button"
             variant="outline"
             className="w-full border-dashed border-primary/40 text-primary hover:bg-primary/5"
-            onClick={handleOffline}
-            isLoading={isLoading}
+            onClick={() => void handleOffline()}
+            disabled={isSubmitting}
           >
             ⚡ {t('auth.continueOffline', 'Continue in Offline / Demo Mode')}
           </Button>

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../features/auth/stores/authStore'
 import { AppShell } from './AppShell'
 import { AuthShell } from './AuthShell'
@@ -30,47 +30,100 @@ const SignUpPage = lazy(() => import('../features/auth/screens/SignUpScreen'))
 const ResetPasswordPage = lazy(() => import('../features/auth/screens/ResetPasswordScreen'))
 const MagicLinkPage = lazy(() => import('../features/auth/screens/MagicLinkScreen'))
 const VerifyEmailPage = lazy(() => import('../features/auth/screens/VerifyEmailScreen'))
+const AuthCallbackPage = lazy(() => import('../features/auth/screens/AuthCallbackScreen'))
 const HelpPage = lazy(() => import('../features/help/screens/HelpScreen'))
-
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const session = useAuthStore((s) => s.session)
-  const isLoading = useAuthStore((s) => s.isLoading)
-
-  if (isLoading) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-surface">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
-  }
-
-  if (!session) return <Navigate to="/auth/sign-in" replace />
-  return <>{children}</>
-}
-
-function RequireOnboarded({ children }: { children: React.ReactNode }) {
-  const session = useAuthStore((s) => s.session)
-  const profile = useAuthStore((s) => s.profile)
-  const isLoading = useAuthStore((s) => s.isLoading)
-
-  if (isLoading) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-surface">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
-  }
-
-  if (!session) return <Navigate to="/auth/sign-in" replace />
-  if (!profile?.onboardedAt) return <Navigate to="/onboarding" replace />
-  return <>{children}</>
-}
 
 const fallback = (
   <div className="min-h-dvh flex items-center justify-center bg-surface">
     <LoadingSpinner size="lg" />
   </div>
 )
+
+/** Guard: redirect signed-in users away from auth pages */
+function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
+  const session = useAuthStore((s) => s.session)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const hydrationStatus = useAuthStore((s) => s.hydrationStatus)
+  const profile = useAuthStore((s) => s.profile)
+
+  if (isLoading || hydrationStatus === 'loading') return fallback
+  if (!session) return <>{children}</>
+  // Signed in — go to onboarding if not onboarded, else home
+  if (session && (!profile?.onboardedAt)) return <Navigate to="/onboarding" replace />
+  return <Navigate to="/" replace />
+}
+
+/** Guard: require authentication */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const session = useAuthStore((s) => s.session)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const hydrationStatus = useAuthStore((s) => s.hydrationStatus)
+  const location = useLocation()
+
+  if (isLoading || hydrationStatus === 'loading') {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-surface">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
+  if (!session) {
+    // Preserve the intended destination
+    return <Navigate to="/auth/sign-in" state={{ from: location }} replace />
+  }
+  return <>{children}</>
+}
+
+/** Guard: require onboarding to be completed */
+function RequireOnboarded({ children }: { children: React.ReactNode }) {
+  const session = useAuthStore((s) => s.session)
+  const profile = useAuthStore((s) => s.profile)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const hydrationStatus = useAuthStore((s) => s.hydrationStatus)
+
+  if (isLoading || hydrationStatus === 'loading') {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-surface">
+        <div className="text-center space-y-3">
+          <LoadingSpinner size="lg" />
+          <p className="text-sm text-text-muted">Restoring your data…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) return <Navigate to="/auth/sign-in" replace />
+
+  // Check the per-user localStorage hint for fast offline relaunch
+  const userId = session.user.id
+  const onboardedHint = localStorage.getItem(`sanchay_onboarded_${userId}`)
+
+  if (!profile?.onboardedAt && !onboardedHint) {
+    return <Navigate to="/onboarding" replace />
+  }
+
+  return <>{children}</>
+}
+
+/** Guard: redirect already-onboarded users away from onboarding */
+function RequireNotOnboarded({ children }: { children: React.ReactNode }) {
+  const profile = useAuthStore((s) => s.profile)
+  const session = useAuthStore((s) => s.session)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const hydrationStatus = useAuthStore((s) => s.hydrationStatus)
+
+  if (isLoading || hydrationStatus === 'loading') return fallback
+
+  const userId = session?.user?.id
+  const onboardedHint = userId ? localStorage.getItem(`sanchay_onboarded_${userId}`) : null
+
+  if (profile?.onboardedAt || onboardedHint) {
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
 
 const router = createBrowserRouter([
   // Auth routes (no shell)
@@ -79,22 +132,56 @@ const router = createBrowserRouter([
     element: <AuthShell />,
     errorElement: <RouteErrorBoundary />,
     children: [
-      { path: 'sign-in', element: <SignInPage /> },
-      { path: 'sign-up', element: <SignUpPage /> },
-      { path: 'reset-password', element: <ResetPasswordPage /> },
-      { path: 'magic-link', element: <MagicLinkPage /> },
-      { path: 'verify-email', element: <VerifyEmailPage /> },
+      {
+        path: 'sign-in',
+        element: (
+          <RedirectIfAuthed>
+            <Suspense fallback={fallback}><SignInPage /></Suspense>
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: 'sign-up',
+        element: (
+          <RedirectIfAuthed>
+            <Suspense fallback={fallback}><SignUpPage /></Suspense>
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: 'reset-password',
+        element: <Suspense fallback={fallback}><ResetPasswordPage /></Suspense>,
+      },
+      {
+        path: 'magic-link',
+        element: (
+          <RedirectIfAuthed>
+            <Suspense fallback={fallback}><MagicLinkPage /></Suspense>
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: 'verify-email',
+        element: <Suspense fallback={fallback}><VerifyEmailPage /></Suspense>,
+      },
+      // P0-A: OAuth/magic-link/email-confirm callback handler
+      {
+        path: 'callback',
+        element: <Suspense fallback={fallback}><AuthCallbackPage /></Suspense>,
+      },
     ],
   },
-  // Onboarding
+  // Onboarding (P0-B: wrapped in RequireNotOnboarded to prevent re-visiting)
   {
     path: '/onboarding',
     errorElement: <RouteErrorBoundary />,
     element: (
       <RequireAuth>
-        <Suspense fallback={fallback}>
-          <OnboardingPage />
-        </Suspense>
+        <RequireNotOnboarded>
+          <Suspense fallback={fallback}>
+            <OnboardingPage />
+          </Suspense>
+        </RequireNotOnboarded>
       </RequireAuth>
     ),
   },
@@ -112,8 +199,17 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage />, handle: { titleKey: 'nav.home' } },
       { path: 'transactions', element: <TransactionsPage />, handle: { titleKey: 'nav.transactions' } },
-      { path: 'transactions/new', element: <TransactionEditorPage />, handle: { titleKey: 'nav.newTransaction' } },
-      { path: 'transactions/:id', element: <TransactionEditorPage />, handle: { titleKey: 'nav.editTransaction' } },
+      // P1-J: Editor routes get hideTabBar so AppShell hides the mobile tab bar
+      {
+        path: 'transactions/new',
+        element: <TransactionEditorPage />,
+        handle: { titleKey: 'nav.newTransaction', hideTabBar: true },
+      },
+      {
+        path: 'transactions/:id',
+        element: <TransactionEditorPage />,
+        handle: { titleKey: 'nav.editTransaction', hideTabBar: true },
+      },
       { path: 'accounts', element: <AccountsPage />, handle: { titleKey: 'nav.accounts' } },
       { path: 'accounts/:id', element: <AccountDetailPage />, handle: { titleKey: 'nav.accountDetail' } },
       { path: 'budgets', element: <BudgetsPage />, handle: { titleKey: 'nav.budgets' } },
@@ -131,7 +227,7 @@ const router = createBrowserRouter([
       { path: 'help', element: <HelpPage />, handle: { titleKey: 'nav.help' } },
     ],
   },
-  // Catch-all
+  // Catch-all: use replace to avoid polluting history
   { path: '*', element: <Navigate to="/" replace /> },
 ])
 

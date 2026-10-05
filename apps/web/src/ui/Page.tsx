@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { cn } from '../lib/cn'
 
@@ -51,6 +51,7 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const headerActions = actions ?? action
 
   const handleBack = () => {
@@ -59,7 +60,11 @@ export function PageHeader({
     } else if (typeof backTo === 'string') {
       navigate(backTo)
     } else {
-      navigate(-1)
+      if (location.key === 'default' || (window.history.state && window.history.state.idx === 0)) {
+        navigate('/', { replace: true })
+      } else {
+        navigate(-1)
+      }
     }
   }
 

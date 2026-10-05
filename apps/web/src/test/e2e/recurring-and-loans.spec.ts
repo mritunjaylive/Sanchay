@@ -14,21 +14,21 @@ test.describe('Recurring Rules, Bills & Loans (F-040, F-046)', () => {
     await page.goto('/bills')
 
     // Switch to rules tab
-    const rulesTab = page.getByRole('button', { name: /rules/i })
+    const rulesTab = page.getByRole('tab', { name: /rules/i })
     await rulesTab.click()
 
     // Click new rule button
-    const newRuleBtn = page.getByRole('button', { name: /new rule|add rule/i }).first()
+    const newRuleBtn = page.getByRole('button', { name: /new rule|add rule|add recurring/i }).first()
     await newRuleBtn.click()
 
     // Fill rule details (scoped to the modal form; fields are found by label)
     const form = page.locator('form')
-    await form.getByLabel('Title / Description').fill('Gym Membership')
-    await form.getByLabel('Amount').fill('2000')
-    await form.getByLabel('Account').selectOption({ label: 'HDFC Bank' })
+    await form.getByLabel(/title|description/i).fill('Gym Membership')
+    await form.getByLabel(/amount/i).fill('2000')
+    await form.getByLabel(/account/i).selectOption({ label: 'HDFC Bank' })
 
     // Save rule
-    await form.getByRole('button', { name: 'Save', exact: true }).click()
+    await form.getByRole('button', { name: /save/i }).click()
 
     // Assert rule appears in the list
     await expect(page.locator('text=Gym Membership').first()).toBeVisible()
@@ -43,11 +43,11 @@ test.describe('Recurring Rules, Bills & Loans (F-040, F-046)', () => {
 
     // Fill loan form (fields are found by label)
     const form = page.locator('form')
-    await form.getByLabel('Loan / Counterparty Name').fill('Personal Loan')
-    await form.getByLabel('Principal Amount').fill('100000') // 100,000 INR
-    await form.getByLabel('Interest %').fill('12') // 12% annual rate
+    await form.getByLabel(/loan.*name/i).fill('Personal Loan')
+    await form.getByLabel(/principal/i).fill('100000') // 100,000 INR
+    await form.getByLabel(/interest/i).fill('12') // 12% annual rate
 
-    await form.getByRole('button', { name: 'Save', exact: true }).click()
+    await form.getByRole('button', { name: /save|create/i }).click()
 
     // Loan account created and schedule rendered
     await expect(page.locator('text=Personal Loan').first()).toBeVisible()

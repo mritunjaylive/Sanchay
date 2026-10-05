@@ -33,8 +33,10 @@ import { Logo, BrandName } from '../ui'
 import { CardSkeleton } from '../ui/Skeleton'
 import { useSettingsStore } from '../features/settings/stores/settingsStore'
 import { cn } from '../lib/cn'
+import { useBackExitGuard } from '../ui/useBackExitGuard'
 
 export function AppShell() {
+  useBackExitGuard()
   const { t } = useTranslation()
   const location = useLocation()
   const matches = useMatches()
@@ -68,6 +70,11 @@ export function AppShell() {
   const currentMatch = matches[matches.length - 1]
   const titleKey = (currentMatch?.handle as { titleKey?: string } | undefined)?.titleKey
   const pageTitle = titleKey ? t(titleKey) : ''
+
+  // P1-J: Check if current route wants to hide the mobile tab bar (e.g. transaction editor)
+  const hideTabBar = matches.some(
+    (m) => (m.handle as { hideTabBar?: boolean } | undefined)?.hideTabBar === true,
+  )
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface">
@@ -127,11 +134,16 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* Scrollable Content */}
+        {/* Scrollable Content — remove tab-bar padding when tab bar is hidden */}
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0 outline-none"
+          className={cn(
+            'flex-1 overflow-y-auto outline-none scroll-pt-44',
+            hideTabBar
+              ? 'pb-[env(safe-area-inset-bottom)]'
+              : 'pb-[calc(var(--tab-bar-height)+env(safe-area-inset-bottom))] md:pb-0',
+          )}
         >
           <Suspense
             fallback={
@@ -145,47 +157,49 @@ export function AppShell() {
           </Suspense>
         </main>
 
-        {/* Mobile Bottom Tab Bar */}
-        <nav
-          aria-label="Main navigation"
-          className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border/80 bg-surface-elevated/90 backdrop-blur"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <div className="relative flex items-center justify-around h-16 px-2">
-            <TabBarItem to="/" icon={<Home size={20} />} label={t('nav.home', 'Home')} end />
-            <TabBarItem
-              to="/transactions"
-              icon={<List size={20} />}
-              label={t('nav.transactions', 'Transactions')}
-            />
+        {/* Mobile Bottom Tab Bar — hidden on editor routes (P1-J) */}
+        {!hideTabBar && (
+          <nav
+            aria-label="Main navigation"
+            className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border/80 bg-surface-elevated/90 backdrop-blur"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className="relative flex items-center justify-around h-16 px-2">
+              <TabBarItem to="/" icon={<Home size={20} />} label={t('nav.home', 'Home')} end />
+              <TabBarItem
+                to="/transactions"
+                icon={<List size={20} />}
+                label={t('nav.transactions', 'Transactions')}
+              />
 
-            {/* Elevated Center Quick Add FAB */}
-            <div className="relative -top-5 flex flex-col items-center">
+              {/* Elevated Center Quick Add FAB */}
+              <div className="relative -top-5 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => navigate('/transactions/new')}
+                  aria-label={t('transactions.addTransaction', 'Add Transaction')}
+                  className={cn(
+                    'w-14 h-14 rounded-full flex items-center justify-center',
+                    'bg-primary text-primary-foreground hover:brightness-105',
+                    'shadow-lg ring-4 ring-surface active:scale-95 transition-all duration-150',
+                  )}
+                >
+                  <Plus size={26} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              <TabBarItem to="/budgets" icon={<PiggyBank size={20} />} label={t('nav.budgets', 'Budgets')} />
               <button
                 type="button"
-                onClick={() => navigate('/transactions/new')}
-                aria-label={t('transactions.addTransaction', 'Add Transaction')}
-                className={cn(
-                  'w-14 h-14 rounded-full flex items-center justify-center',
-                  'bg-primary text-primary-foreground hover:brightness-105',
-                  'shadow-lg ring-4 ring-surface active:scale-95 transition-all duration-150',
-                )}
+                onClick={() => setIsMoreOpen(true)}
+                className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg touch-target text-text-muted hover:text-text transition-colors"
               >
-                <Plus size={26} strokeWidth={2.5} />
+                <MoreHorizontal size={20} />
+                <span className="text-[11px] font-medium leading-tight">{t('nav.more', 'More')}</span>
               </button>
             </div>
-
-            <TabBarItem to="/budgets" icon={<PiggyBank size={20} />} label={t('nav.budgets', 'Budgets')} />
-            <button
-              type="button"
-              onClick={() => setIsMoreOpen(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg touch-target text-text-muted hover:text-text transition-colors"
-            >
-              <MoreHorizontal size={20} />
-              <span className="text-[11px] font-medium leading-tight">{t('nav.more', 'More')}</span>
-            </button>
-          </div>
-        </nav>
+          </nav>
+        )}
       </div>
 
       {/* Mobile More Features Bottom Sheet */}
@@ -392,6 +406,7 @@ function TabBarItem({ to, icon, label, end }: NavItemProps) {
   return (
     <NavLink
       to={to}
+      replace
       end={Boolean(end)}
       className={({ isActive }) =>
         cn(
@@ -419,6 +434,7 @@ function SidebarLink({ to, icon, label, end, collapsed }: NavItemProps) {
   return (
     <NavLink
       to={to}
+      replace
       end={Boolean(end)}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>

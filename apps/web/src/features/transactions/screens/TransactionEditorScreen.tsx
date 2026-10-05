@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { db } from '../../../db/db'
@@ -7,11 +7,12 @@ import { transactionRepo } from '../../../db/repositories/transactionRepo'
 import { categoryRepo } from '../../../db/repositories/categoryRepo'
 import { useAuthStore } from '../../auth/stores/authStore'
 import { useSettingsStore } from '../../settings/stores/settingsStore'
-import { parseAmountToMinor, formatMoney } from '../../../lib/money'
+import { parseAmountToMinor, formatMoney, minorToDecimalString } from '../../../lib/money'
 import { suggestPayees, suggestCategoryForPayee } from '../../../domain/suggestions'
 import { checkBudgetThreshold, getEffectiveBudget } from '../../../domain/budgets'
 import { periodFor } from '../../../domain/dates'
 import { fxService } from '../../fx/services/fxService'
+import { useFxRatesMap } from '../../fx/hooks/useFxRatesMap'
 import {
   Page,
   PageHeader,
@@ -22,6 +23,7 @@ import {
   Keypad,
   SegmentedControl,
   CategoryIcon,
+  toast,
 } from '../../../ui'
 import {
   Trash2,
@@ -41,6 +43,7 @@ export default function TransactionEditorScreen() {
   const { id } = useParams<{ id: string }>()
   const isEditing = Boolean(id && id !== 'new')
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const user = useAuthStore((s) => s.session?.user)
@@ -92,8 +95,9 @@ export default function TransactionEditorScreen() {
   useEffect(() => {
     if (existingTx) {
       setType(existingTx.type)
-      const minor = existingTx.amountMinor
-      setAmountExpr((minor / 100).toString())
+      const txAccount = accounts?.find((a) => a.id === existingTx.accountId)
+      const txCurr = txAccount?.currency ?? baseCurrency
+      setAmountExpr(minorToDecimalString(existingTx.amountMinor, txCurr))
       setAccountId(existingTx.accountId)
       setToAccountId(existingTx.toAccountId ?? '')
       setCategoryId(existingTx.categoryId ?? '')
@@ -102,7 +106,7 @@ export default function TransactionEditorScreen() {
       setNote(existingTx.note ?? '')
       if (existingTx.note) setIsNoteExpanded(true)
     }
-  }, [existingTx])
+  }, [existingTx, accounts, baseCurrency])
 
   useEffect(() => {
     if (existingTags) {
@@ -134,6 +138,11 @@ export default function TransactionEditorScreen() {
     }
   }
 
+  // Currency resolution: follows active account currency, falls back to baseCurrency
+  const activeAccount = accounts?.find((a) => a.id === accountId)
+  const txCurrency = activeAccount?.currency ?? baseCurrency
+  const { convertToSync } = useFxRatesMap()
+
   // Budget threshold warning check (spec F-039)
   useEffect(() => {
     if (type !== 'expense' || !allBudgets || !allTxs) {
@@ -142,11 +151,14 @@ export default function TransactionEditorScreen() {
     }
 
     try {
-      const newExpenseMinor = parseAmountToMinor(amountExpr, baseCurrency)
+      const newExpenseMinor = parseAmountToMinor(amountExpr, txCurrency)
       if (newExpenseMinor <= 0) {
         setBudgetWarning(null)
         return
       }
+
+      // Convert expense to baseCurrency before checking against monthly budget
+      const newExpenseInBase = convertToSync(newExpenseMinor, txCurrency, baseCurrency)
 
       const targetMonth = occurredOn.substring(0, 7)
       const effective = getEffectiveBudget(allBudgets, categoryId || null, targetMonth)
@@ -165,7 +177,7 @@ export default function TransactionEditorScreen() {
 
         const threshold = checkBudgetThreshold(
           spentBeforeMinor,
-          newExpenseMinor,
+          newExpenseInBase,
           effective.amountMinor,
           effective.alertThresholds ?? [80, 100],
         )
@@ -187,26 +199,26 @@ export default function TransactionEditorScreen() {
     } catch {
       setBudgetWarning(null)
     }
-  }, [type, amountExpr, categoryId, occurredOn, allBudgets, allTxs, isEditing, id, baseCurrency, locale, monthStartDay])
+  }, [type, amountExpr, categoryId, occurredOn, allBudgets, allTxs, isEditing, id, txCurrency, baseCurrency, locale, monthStartDay, convertToSync])
 
   const handleSave = async (andAddAnother = false) => {
     if (!user || !accountId) return
 
     let amountMinor = 0
     try {
-      amountMinor = parseAmountToMinor(amountExpr, baseCurrency)
+      amountMinor = parseAmountToMinor(amountExpr, txCurrency)
     } catch {
-      alert(t('transactions.invalidAmount', 'Invalid amount expression'))
+      toast.error(t('transactions.invalidAmount', 'Invalid amount expression'))
       return
     }
 
     if (amountMinor <= 0) {
-      alert(t('transactions.amountGreaterThanZero', 'Amount must be greater than zero'))
+      toast.error(t('transactions.amountGreaterThanZero', 'Amount must be greater than zero'))
       return
     }
 
     const account = accounts?.find((a) => a.id === accountId)
-    const currency = account?.currency ?? baseCurrency
+    const currency = txCurrency
     const toAccount = accounts?.find((a) => a.id === toAccountId)
 
     // Calculate baseAmountMinor and FX rate
@@ -298,11 +310,6 @@ export default function TransactionEditorScreen() {
     }
   }
 
-  // Deduplicate on mount if duplicates exist in local DB
-  useEffect(() => {
-    void categoryRepo.deduplicateCategories(user?.id)
-  }, [user?.id])
-
   const relevantCategories = useMemo(() => {
     if (!categories) return []
     const seen = new Set<string>()
@@ -320,8 +327,39 @@ export default function TransactionEditorScreen() {
     return list
   }, [categories, type, user?.id])
 
-  const activeAccount = accounts?.find((a) => a.id === accountId)
-  const currencySymbol = activeAccount?.currency ?? baseCurrency
+  // Currency symbol via narrowSymbol (P1-H)
+  const currencySymbol = useMemo(() => {
+    try {
+      const parts = new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: txCurrency,
+        currencyDisplay: 'narrowSymbol',
+      }).formatToParts(0)
+      const sym = parts.find((p) => p.type === 'currency')?.value
+      return sym || txCurrency
+    } catch {
+      return txCurrency
+    }
+  }, [txCurrency, locale])
+
+  // Approximate base amount conversion when account currency differs from base
+  const approxBaseAmountMinor = useMemo(() => {
+    if (txCurrency === baseCurrency || !amountExpr) return null
+    try {
+      const minor = parseAmountToMinor(amountExpr, txCurrency)
+      return convertToSync(minor, txCurrency, baseCurrency)
+    } catch {
+      return null
+    }
+  }, [amountExpr, txCurrency, baseCurrency, convertToSync])
+
+  const handleCancel = () => {
+    if (location.key === 'default' || (window.history.state && window.history.state.idx === 0)) {
+      navigate('/transactions', { replace: true })
+    } else {
+      navigate(-1)
+    }
+  }
 
   return (
     <Page width="narrow" className="max-w-3xl space-y-6 pb-28">
@@ -381,23 +419,41 @@ export default function TransactionEditorScreen() {
                 className="flex items-center gap-1 text-primary hover:underline font-medium"
               >
                 <Calculator size={14} />
-                <span>{showKeypad ? 'Hide Keypad' : 'Show Keypad'}</span>
+                <span>{showKeypad ? t('transactions.hideKeypad', 'Hide Keypad') : t('transactions.showKeypad', 'Show Keypad')}</span>
               </button>
             </div>
 
-            <div className="flex items-center justify-center gap-2 py-2">
-              <span className="text-2xl sm:text-3xl font-bold text-text-muted">
+            {/* Centered baseline row: symbol + auto-expanding input */}
+            <div className="flex items-baseline justify-center gap-2 py-3">
+              <span className="text-3xl font-semibold text-text-muted leading-none select-none">
                 {currencySymbol}
               </span>
               <input
                 type="text"
                 inputMode="decimal"
+                data-testid="tx-amount-input"
+                aria-label={`Amount in ${txCurrency}`}
                 value={amountExpr}
                 onChange={(e) => setAmountExpr(e.target.value)}
-                className="text-4xl sm:text-5xl font-extrabold text-text bg-transparent border-none outline-none tracking-tight text-center max-w-[280px]"
+                style={{ width: `${Math.min(14, Math.max(2, (amountExpr || '0').length + 1))}ch` }}
+                className="text-5xl font-extrabold tabular-nums text-text bg-transparent border-none outline-none tracking-tight leading-none text-left"
                 placeholder="0"
               />
             </div>
+
+            {/* Approximate base currency line when tx currency != base currency */}
+            {txCurrency !== baseCurrency && (
+              <div className="flex items-center justify-center gap-2 text-xs text-text-muted pb-1">
+                <span className="px-1.5 py-0.5 rounded bg-surface-overlay text-[10px] font-mono font-semibold uppercase">
+                  {txCurrency}
+                </span>
+                {approxBaseAmountMinor !== null && (
+                  <span>
+                    ≈ {formatMoney(approxBaseAmountMinor, baseCurrency, locale)} at today&apos;s rate
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Budget Warning Banner (Spec F-039) */}
             {budgetWarning && (
@@ -480,6 +536,7 @@ export default function TransactionEditorScreen() {
                   <button
                     key={acc.id}
                     type="button"
+                    data-testid={`from-account-${acc.id}`}
                     onClick={() => setAccountId(acc.id)}
                     className={cn(
                       'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
@@ -512,6 +569,7 @@ export default function TransactionEditorScreen() {
                         <button
                           key={acc.id}
                           type="button"
+                          data-testid={`to-account-${acc.id}`}
                           onClick={() => setToAccountId(acc.id)}
                           className={cn(
                             'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
@@ -688,6 +746,7 @@ export default function TransactionEditorScreen() {
           <Button
             type="button"
             variant="primary"
+            data-testid="tx-save"
             className="flex-2 sm:flex-1"
             onClick={() => handleSave(false)}
           >

@@ -178,6 +178,24 @@ export function formatAmount(minor: number, currency: string, locale = 'en-IN'):
 }
 
 /**
+ * Format minor units directly to an unadorned decimal string (e.g. for input fields),
+ * without thousands separators or currency symbols. Pure integer math, no float drift.
+ */
+export function minorToDecimalString(minor: number, currency: string): string {
+  const exp = getCurrencyExponent(currency)
+  const isNeg = minor < 0
+  const absMinor = Math.abs(minor)
+  if (exp === 0) {
+    return `${isNeg ? '-' : ''}${absMinor}`
+  }
+  const multiplier = Math.pow(10, exp)
+  const majorPart = Math.floor(absMinor / multiplier)
+  const fracPart = absMinor % multiplier
+  const fracStr = fracPart.toString().padStart(exp, '0')
+  return `${isNeg ? '-' : ''}${majorPart}.${fracStr}`
+}
+
+/**
  * Format as full currency string including symbol.
  */
 export function formatMoney(minor: number, currency: string, locale = 'en-IN'): string {

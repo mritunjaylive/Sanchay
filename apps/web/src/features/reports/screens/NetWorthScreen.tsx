@@ -27,6 +27,8 @@ import {
 import { ReportHeader } from '../components/ReportHeader'
 import { ShieldCheck, TrendingUp, Table as TableIcon, AreaChart as AreaChartIcon } from 'lucide-react'
 
+import { useFxRatesMap } from '../../fx/hooks/useFxRatesMap'
+
 export default function NetWorthScreen() {
   const { t } = useTranslation()
   const { baseCurrency, locale } = useSettingsStore()
@@ -37,14 +39,15 @@ export default function NetWorthScreen() {
 
   const accounts = useLiveQuery(() => db.accounts.filter((a) => !a.deletedAt).toArray(), [])
   const transactions = useLiveQuery(() => db.transactions.filter((tx) => !tx.deletedAt).toArray(), [])
+  const { convertToSync, hasRates } = useFxRatesMap()
 
-  const getBaseAmount = (minor: number) => minor
+  const getBaseAmount = (minor: number, currency: string) => convertToSync(minor, currency, baseCurrency)
 
   // Current Net Worth
   const currentNW = useMemo(() => {
     if (!accounts || !transactions) return { assets: 0, liabilities: 0, netWorth: 0 }
     return netWorth(accounts, transactions, getBaseAmount)
-  }, [accounts, transactions])
+  }, [accounts, transactions, convertToSync, baseCurrency])
 
   // Month-end points for the last 6 months
   const monthlyHistory = useMemo(() => {
@@ -115,6 +118,12 @@ export default function NetWorthScreen() {
           </Button>
         }
       />
+
+      {accounts && accounts.some((a) => !a.archivedAt && !a.excludeFromNetWorth && a.currency !== baseCurrency) && !hasRates && (
+        <div className="p-3 bg-warning/10 border border-warning/20 rounded-xl text-xs text-warning">
+          {t('reports.ratesUnavailableNote', 'Exchange rates are currently unavailable offline. Multi-currency balances are calculated using 1:1 fallback rates.')}
+        </div>
+      )}
 
       {/* Hero Net Worth Card */}
       <Card variant="hero" className="p-6 rounded-3xl relative overflow-hidden space-y-4">

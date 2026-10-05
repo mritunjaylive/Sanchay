@@ -3,7 +3,11 @@ import type { Account, Profile, Transaction, Budget, RecurringRule } from '@sanc
 
 /** Waits until the app has exposed the Dexie handle (it is attached asynchronously in main.tsx). */
 export async function waitForDb(page: Page) {
-  await page.waitForFunction(() => !!(window as unknown as { __SANCHAY_DB__?: unknown }).__SANCHAY_DB__)
+  await page.waitForFunction(
+    () => !!(window as unknown as { __SANCHAY_DB__?: unknown }).__SANCHAY_DB__,
+    null,
+    { timeout: 15000 },
+  )
 }
 
 export const TEST_USER_ID = '00000000-0000-0000-0000-000000000001'
@@ -18,7 +22,9 @@ export async function seedTestUser(
   const { onboarded = true, baseCurrency = 'INR' } = options
 
   // 1. First navigate to page or origin so localStorage and IndexedDB are accessible
-  await page.goto('/')
+  if (page.url() === 'about:blank' || !page.url().includes('5173')) {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+  }
   await waitForDb(page)
 
   await page.evaluate(
@@ -42,6 +48,11 @@ export async function seedTestUser(
       }
 
       localStorage.setItem('sanchay_offline_session', JSON.stringify(mockSession))
+      if (onboarded) {
+        localStorage.setItem(`sanchay_onboarded_${userId}`, 'true')
+      } else {
+        localStorage.removeItem(`sanchay_onboarded_${userId}`)
+      }
 
       const profile: Profile = {
         id: userId,
@@ -75,7 +86,8 @@ export async function seedTestUser(
     { userId: TEST_USER_ID, onboarded, baseCurrency },
   )
 
-  await page.reload()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitForDb(page)
 }
 
 /**
@@ -168,8 +180,8 @@ export async function seedTransactions(
  */
 export async function clearDatabase(page: Page) {
   try {
-    if (page.url() === 'about:blank') {
-      await page.goto('/')
+    if (page.url() === 'about:blank' || !page.url().includes('5173')) {
+      await page.goto('/', { waitUntil: 'domcontentloaded' })
     }
     await waitForDb(page)
     await page.evaluate(async () => {

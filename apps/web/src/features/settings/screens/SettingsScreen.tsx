@@ -28,7 +28,7 @@ import {
   Moon,
   Sun,
   Monitor,
-  Globe,
+
   Shield,
   Download,
   RefreshCw,
@@ -436,48 +436,20 @@ export default function SettingsScreen() {
                 </div>
               </div>
 
-              {/* Language Selection */}
-              <div className="space-y-3 pt-4 border-t border-border/40">
-                <label className="text-xs font-bold text-text uppercase tracking-wider block">
-                  {t('settings.language', 'App Language')}
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleLanguageChange('en')}
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 font-bold text-xs transition-all ${
-                      currentLang === 'en'
-                        ? 'border-primary bg-primary/10 text-primary shadow-xs'
-                        : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-base" role="img" aria-label="UK flag">🇬🇧</span>
-                      <span>English</span>
-                    </div>
-                    {currentLang === 'en' && <Check size={16} className="text-primary shrink-0" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleLanguageChange('hi')}
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 font-bold text-xs transition-all ${
-                      currentLang === 'hi'
-                        ? 'border-primary bg-primary/10 text-primary shadow-xs'
-                        : 'border-border/60 bg-surface-elevated text-text hover:bg-surface-overlay'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-base" role="img" aria-label="India flag">🇮🇳</span>
-                      <span className="font-hindi text-sm">हिन्दी (Hindi)</span>
-                    </div>
-                    {currentLang === 'hi' && <Check size={16} className="text-primary shrink-0" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Currency & Month Start */}
+              {/* Language Selection — P1-C: single dropdown, not flag buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border/40">
+                <Select
+                  data-testid="lang-select"
+                  label={t('settings.language', 'Language')}
+                  value={currentLang}
+                  onChange={(e) => handleLanguageChange(e.target.value as 'en' | 'hi')}
+                  options={[
+                    { value: 'en', label: 'English' },
+                    { value: 'hi', label: 'हिन्दी' },
+                  ]}
+                />
+
+                {/* Currency & Month Start */}
                 <Select
                   label={t('settings.baseCurrency', 'Base Currency')}
                   value={baseCurrency}
@@ -494,7 +466,9 @@ export default function SettingsScreen() {
                     { value: 'AED', label: 'AED (د.إ) - UAE Dirham' },
                   ]}
                 />
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border/40">
                 <Input
                   type="number"
                   min="1"
@@ -507,6 +481,7 @@ export default function SettingsScreen() {
               </div>
             </Card>
           )}
+
 
           {/* SECURITY & PRIVACY SECTION */}
           {activeTab === 'security' && (

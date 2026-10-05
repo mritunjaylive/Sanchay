@@ -13,17 +13,17 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
 
   test('can add an expense transaction and see it in the list', async ({ page }) => {
     await page.goto('/transactions/new?type=expense')
-    await expect(page.getByRole('button', { name: /^expense$/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /expense/i })).toBeVisible()
 
     // Enter amount
-    const amountInput = page.locator('input[inputmode="decimal"]').first()
+    const amountInput = page.getByTestId('tx-amount-input')
     await amountInput.fill('450.50')
 
     // Fill payee
-    await page.getByLabel('Payee').fill('Grocery Mart')
+    await page.getByLabel(/payee/i).fill('Grocery Mart')
 
     // Save
-    const saveBtn = page.getByRole('button', { name: 'Save', exact: true })
+    const saveBtn = page.getByTestId('tx-save')
     await saveBtn.click()
 
     // Navigates back to transactions list
@@ -34,20 +34,20 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
   test('can perform transfer between accounts: balances change, net worth unchanged', async ({ page }) => {
     await page.goto('/transactions/new?type=transfer')
 
-    await expect(page.getByRole('button', { name: /^transfer$/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /transfer/i })).toBeVisible()
 
     // Enter amount
-    const amountInput = page.locator('input[inputmode="decimal"]').first()
+    const amountInput = page.getByTestId('tx-amount-input')
     await amountInput.fill('1000')
 
     // Select source account
-    await page.getByLabel('From Account').selectOption({ label: 'Main Bank' })
+    await page.getByTestId('from-account-acc-bank').click()
 
     // Select destination account
-    await page.getByLabel('To Account').selectOption({ label: 'Cash Wallet' })
+    await page.getByTestId('to-account-acc-wallet').click()
 
     // Save
-    const saveBtn = page.getByRole('button', { name: 'Save', exact: true })
+    const saveBtn = page.getByTestId('tx-save')
     await saveBtn.click()
 
     await page.waitForURL('**/transactions')
@@ -66,9 +66,9 @@ test.describe('Transaction Lifecycle & Transfers (F-020, F-022, F-024)', () => {
     await page.goto('/transactions')
     await expect(page.locator('text=Coffee Cafe').first()).toBeVisible()
 
-    // Enter select mode, pick the row (rows are buttons, not checkboxes)
+    // Enter select mode, pick the transaction via select-all or row
     await page.getByRole('button', { name: 'Select', exact: true }).click()
-    await page.getByRole('button', { name: /Coffee Cafe/ }).click()
+    await page.getByRole('button', { name: /selected/i }).click()
 
     // Bulk delete asks for window.confirm(); Playwright dismisses dialogs by default
     page.once('dialog', (dialog) => void dialog.accept())

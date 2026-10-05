@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../lib/cn'
 import { X } from 'lucide-react'
+import { useBackClose } from './useBackClose'
 
 export interface ModalProps {
   isOpen: boolean
@@ -22,6 +23,7 @@ export function Modal({
   size = 'md',
   className,
 }: ModalProps) {
+  useBackClose(isOpen, onClose)
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
 

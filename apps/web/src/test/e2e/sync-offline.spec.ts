@@ -15,19 +15,19 @@ test.describe('Offline Add & Multi-Context Sync (F-077, F-079)', () => {
     // chunks are in memory before going offline. (Two page.goto() calls would reload the app,
     // and the dev server used in E2E has no service worker to serve missing chunks offline.)
     await page.goto('/transactions')
-    await page.getByRole('button', { name: 'Add', exact: true }).click()
-    await expect(page.getByRole('button', { name: /^expense$/i })).toBeVisible()
+    await page.getByRole('button', { name: /add/i }).first().click()
+    await expect(page.getByRole('tab', { name: /expense/i })).toBeVisible()
 
     // 1. Simulate turning off network (airplane mode)
     await context.setOffline(true)
 
     // Fill expense
-    const amountInput = page.locator('input[inputmode="decimal"]').first()
+    const amountInput = page.getByTestId('tx-amount-input')
     await amountInput.fill('120')
-    await page.getByLabel('Payee').fill('Offline Vendor')
+    await page.getByLabel(/payee/i).fill('Offline Vendor')
 
     // Save while offline
-    const saveBtn = page.getByRole('button', { name: 'Save', exact: true })
+    const saveBtn = page.getByTestId('tx-save')
     await saveBtn.click()
 
     await page.waitForURL('**/transactions')

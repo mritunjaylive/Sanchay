@@ -100,8 +100,125 @@ class SanchayDB extends Dexie {
       kv: 'key',
     })
 
-    // Future migrations use:
-    // this.version(2).stores({...}).upgrade(tx => { ... })
+    /**
+     * Version 2: P0-B — Fix broken profile rows where id !== userId.
+     *
+     * The previous profileRepo.update() created profiles with id = uuidv7(),
+     * which violated the server FK (profiles.id references auth.users.id).
+     * This migration re-keys such rows to id = userId and removes/rewrites
+     * their outbox entries.
+     */
+    this.version(2)
+      .stores({
+        // Same schema — no structural changes, just data migration
+        profiles: 'id, userId, updatedAt',
+        accounts: 'id, userId, kind, updatedAt, archivedAt, sortOrder',
+        loanTerms: 'id, accountId, userId, updatedAt',
+        categories: 'id, userId, kind, parentId, updatedAt, archivedAt, sortOrder',
+        tags: 'id, userId, updatedAt',
+        transactions: [
+          'id',
+          'userId',
+          'occurredOn',
+          'updatedAt',
+          '[accountId+occurredOn]',
+          '[categoryId+occurredOn]',
+          '[type+occurredOn]',
+          'payee',
+          'recurringRuleId',
+          'deletedAt',
+        ].join(', '),
+        transactionTags: 'id, transactionId, tagId, updatedAt',
+        attachments: 'id, transactionId, uploadState, updatedAt',
+        budgets: 'id, categoryId, effectiveFrom, userId, updatedAt',
+        recurringRules: 'id, userId, mode, updatedAt',
+        recurringOverrides: 'id, ruleId, occurrenceDate, updatedAt',
+        goals: 'id, userId, updatedAt, completedAt',
+        goalContributions: 'id, goalId, occurredOn, updatedAt',
+        savedFilters: 'id, userId, updatedAt',
+        notifications: 'id, userId, readAt, dedupeKey, updatedAt',
+        fxRates: '[date+quote], date, quote',
+        outbox: '++id, table, rowId, updatedAt, attempt',
+        syncState: 'table',
+        pendingUploads: '++id, attachmentId, attempt',
+        kv: 'key',
+      })
+      .upgrade(async (tx) => {
+        // Find profiles where id !== userId (the broken ones)
+        const broken = await tx.table('profiles').filter((p: Profile) => p.id !== p.userId).toArray() as Profile[]
+
+        for (const profile of broken) {
+          const correctId = profile.userId
+
+          // Check if a correct row already exists (e.g. created after a previous fix attempt)
+          const existing = await tx.table('profiles').get(correctId) as Profile | undefined
+          if (!existing) {
+            // Re-key the profile
+            await tx.table('profiles').delete(profile.id)
+            await tx.table('profiles').put({ ...profile, id: correctId })
+          } else {
+            // Keep the one with a later updatedAt or higher version
+            const winner =
+              existing.version >= profile.version ? existing : { ...profile, id: correctId }
+            await tx.table('profiles').delete(profile.id)
+            await tx.table('profiles').put(winner)
+          }
+
+          // Remove stale outbox entries for the old (wrong) id and add a corrected one
+          await tx.table('outbox')
+            .where('table').equals('profiles')
+            .filter((e: OutboxEntry) => e.rowId === profile.id)
+            .delete()
+        }
+      })
+
+    /**
+     * Version 3: P0-E — Outbox quarantine schema.
+     * Adds status index and fields (attempts, lastError, lastAttemptAt, status)
+     * so failed/poison rows can be isolated without blocking sync.
+     */
+    this.version(3)
+      .stores({
+        profiles: 'id, userId, updatedAt',
+        accounts: 'id, userId, kind, updatedAt, archivedAt, sortOrder',
+        loanTerms: 'id, accountId, userId, updatedAt',
+        categories: 'id, userId, kind, parentId, updatedAt, archivedAt, sortOrder',
+        tags: 'id, userId, updatedAt',
+        transactions: [
+          'id',
+          'userId',
+          'occurredOn',
+          'updatedAt',
+          '[accountId+occurredOn]',
+          '[categoryId+occurredOn]',
+          '[type+occurredOn]',
+          'payee',
+          'recurringRuleId',
+          'deletedAt',
+        ].join(', '),
+        transactionTags: 'id, transactionId, tagId, updatedAt',
+        attachments: 'id, transactionId, uploadState, updatedAt',
+        budgets: 'id, categoryId, effectiveFrom, userId, updatedAt',
+        recurringRules: 'id, userId, mode, updatedAt',
+        recurringOverrides: 'id, ruleId, occurrenceDate, updatedAt',
+        goals: 'id, userId, updatedAt, completedAt',
+        goalContributions: 'id, goalId, occurredOn, updatedAt',
+        savedFilters: 'id, userId, updatedAt',
+        notifications: 'id, userId, readAt, dedupeKey, updatedAt',
+        fxRates: '[date+quote], date, quote',
+        outbox: '++id, table, rowId, updatedAt, attempt, status',
+        syncState: 'table',
+        pendingUploads: '++id, attachmentId, attempt',
+        kv: 'key',
+      })
+      .upgrade(async (tx) => {
+        await tx.table('outbox').toCollection().modify((entry: OutboxEntry) => {
+          if (!entry.status) entry.status = 'pending'
+          if (entry.attempts === undefined) entry.attempts = entry.attempt || 0
+          if (entry.lastError === undefined) entry.lastError = null
+          if (entry.lastAttemptAt === undefined) entry.lastAttemptAt = null
+        })
+      })
   }
 
   /** Wipe all local IndexedDB tables cleanly. */

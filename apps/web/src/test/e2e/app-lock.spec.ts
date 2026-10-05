@@ -9,7 +9,11 @@ test.describe('App Lock & Lockout Schedule (F-073)', () => {
 
   test('can set a PIN in Settings and sees AppLockModal when locked', async ({ page }) => {
     await page.goto('/settings')
-    await expect(page.locator('text=App Lock').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible()
+
+    // Switch to Security tab
+    await page.getByRole('button', { name: /security/i }).first().click()
+    await expect(page.locator('text=App Lock').or(page.locator('text=PIN App Lock')).first()).toBeVisible()
 
     // Find Set PIN button
     const setPinBtn = page.getByRole('button', { name: /set pin|enable/i }).first()

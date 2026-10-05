@@ -10,10 +10,10 @@ import { requestPersistentStorage } from './lib/storage'
 registerSW()
 void requestPersistentStorage()
 
-if (import.meta.env.DEV || typeof window !== 'undefined') {
-  import('./db/db').then(({ db }) => {
-    ;(window as unknown as { __SANCHAY_DB__: typeof db }).__SANCHAY_DB__ = db
-  })
+import { db } from './db/db'
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __SANCHAY_DB__: typeof db }).__SANCHAY_DB__ = db
 }
 
 const rootEl = document.getElementById('root')

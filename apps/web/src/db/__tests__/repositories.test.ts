@@ -3,6 +3,7 @@ import { db } from '../db'
 import { accountRepo } from '../repositories/accountRepo'
 import { transactionRepo } from '../repositories/transactionRepo'
 import { categoryRepo } from '../repositories/categoryRepo'
+import { recurringRepo } from '../repositories/recurringRepo'
 
 describe('db/repositories — IndexedDB & Outbox Atomic Operations', () => {
   beforeEach(async () => {
@@ -10,6 +11,8 @@ describe('db/repositories — IndexedDB & Outbox Atomic Operations', () => {
     await db.transactions.clear()
     await db.transactionTags.clear()
     await db.categories.clear()
+    await db.recurringRules.clear()
+    await db.recurringOverrides.clear()
     await db.outbox.clear()
   })
 
@@ -138,6 +141,72 @@ describe('db/repositories — IndexedDB & Outbox Atomic Operations', () => {
       const tagOutbox = await db.outbox.where('table').equals('transaction_tags').toArray()
       expect(tagOutbox.length).toBe(1)
       expect(tagOutbox[0]?.snapshot['transaction_id']).toBe(tx.id)
+    })
+  })
+
+  describe('recurringRepo offline materialization', () => {
+    it('materializes due occurrences offline without sync and remains idempotent', async () => {
+      const account = await accountRepo.create({
+        userId: 'user-rec',
+        name: 'Checking',
+        kind: 'bank',
+        currency: 'INR',
+        openingBalanceMinor: 100000,
+        openingDate: '2026-01-01',
+        creditLimitMinor: null,
+        statementDay: null,
+        dueDay: null,
+        note: null,
+        excludeFromNetWorth: false,
+        icon: null,
+        color: null,
+        sortOrder: 0,
+        archivedAt: null,
+      })
+
+      const rule = await recurringRepo.createRule({
+        userId: 'user-rec',
+        title: 'Internet',
+        type: 'expense',
+        accountId: account.id,
+        toAccountId: null,
+        amountMinor: 50000,
+        freq: 'monthly',
+        interval: 1,
+        byMonthDay: 5,
+        byWeekday: null,
+        startDate: '2026-01-05',
+        endDate: null,
+        maxCount: null,
+        mode: 'auto_post',
+        remindDaysBefore: 1,
+        pausedAt: null,
+        categoryId: null,
+        payee: 'Internet Provider',
+        note: 'Fiber broadband',
+      })
+
+      // Materialize offline for 2026-02-10 (should generate 2026-01-05 and 2026-02-05)
+      const count1 = await recurringRepo.materializeDueOccurrences('user-rec', '2026-02-10')
+      expect(count1).toBe(2)
+
+      const txs = await db.transactions.where('userId').equals('user-rec').toArray()
+      expect(txs.length).toBe(2)
+      expect(txs.map((t) => t.occurredOn).sort()).toEqual(['2026-01-05', '2026-02-05'])
+
+      // Materialize again on same or earlier date — must be idempotent and create 0 additional transactions
+      const count2 = await recurringRepo.materializeDueOccurrences('user-rec', '2026-02-10')
+      expect(count2).toBe(0)
+
+      const txsAfter = await db.transactions.where('userId').equals('user-rec').toArray()
+      expect(txsAfter.length).toBe(2)
+
+      // Advance date to 2026-03-06 (should create 2026-03-05 only)
+      const count3 = await recurringRepo.materializeDueOccurrences('user-rec', '2026-03-06')
+      expect(count3).toBe(1)
+
+      const txsFinal = await db.transactions.where('userId').equals('user-rec').toArray()
+      expect(txsFinal.length).toBe(3)
     })
   })
 })

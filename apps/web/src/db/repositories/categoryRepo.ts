@@ -172,8 +172,6 @@ export const categoryRepo = {
    * Spec section 20 standard categories.
    */
   async seedDefaultCategories(userId: string): Promise<void> {
-    await this.deduplicateCategories(userId)
-
     const existing = await db.categories.filter((c) => !c.deletedAt).toArray()
     const existingKeys = new Set(
       existing.map((c) => `${c.kind}:${c.name.trim().toLowerCase()}`),

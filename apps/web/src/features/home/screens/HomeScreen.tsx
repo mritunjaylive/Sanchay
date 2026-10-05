@@ -12,6 +12,7 @@ import { calculateGoalProgress } from '../../../domain/goals'
 import { occurrences } from '../../../domain/recurrence'
 import { formatDayLabel } from '../../../lib/formatDayLabel'
 import { formatMoney } from '../../../lib/money'
+import { useFxRatesMap } from '../../fx/hooks/useFxRatesMap'
 import {
   Page,
   Card,
@@ -90,14 +91,18 @@ export default function HomeScreen() {
     return map
   }, [accounts])
 
-  // Simple FX rate converter (1:1 fallback for now)
-  const getBaseAmount = (minor: number) => minor
+  // Multi-currency FX conversion for Net Worth
+  const { convertToSync, hasRates } = useFxRatesMap()
+
+  const getBaseAmount = (minor: number, currency: string) => {
+    return convertToSync(minor, currency, baseCurrency)
+  }
 
   // Net worth calculation
   const nw = useMemo(() => {
     if (!accounts || !transactions) return { assets: 0, liabilities: 0, netWorth: 0 }
     return netWorth(accounts, transactions, getBaseAmount)
-  }, [accounts, transactions])
+  }, [accounts, transactions, convertToSync, baseCurrency])
 
   // 30-day Net worth history for Sparkline
   const last30Days = useMemo(() => {
@@ -118,15 +123,16 @@ export default function HomeScreen() {
       for (const acc of accounts) {
         if (acc.archivedAt || acc.excludeFromNetWorth) continue
         const bal = balanceOn(acc, transactions, date)
+        const baseBal = convertToSync(bal, acc.currency, baseCurrency)
         if (['credit_card', 'loan', 'other_liability'].includes(acc.kind)) {
-          total -= Math.abs(bal)
+          total -= Math.abs(baseBal)
         } else {
-          total += bal
+          total += baseBal
         }
       }
       return total
     })
-  }, [accounts, transactions, last30Days])
+  }, [accounts, transactions, last30Days, convertToSync, baseCurrency])
 
   // Net worth delta (this month's net savings or 30-day delta)
   const nwDeltaMinor = useMemo(() => {

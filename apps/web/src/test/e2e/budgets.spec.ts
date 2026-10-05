@@ -64,11 +64,11 @@ test.describe('Budget Threshold Alert on Entry (F-039)', () => {
   test('entering an expense that crosses 80% threshold shows non-blocking warning', async ({ page }) => {
     await page.goto('/transactions/new?type=expense')
 
-    // Select Food & Dining category (waits for the option to load from Dexie)
-    await page.getByLabel('Category').selectOption({ label: 'Food & Dining' })
+    // Select Food & Dining category (button in category grid)
+    await page.getByRole('button', { name: 'Food & Dining' }).click()
 
     // Enter 8,500 INR (crosses 80% of 10,000 INR budget)
-    await page.locator('input[inputmode="decimal"]').first().fill('8500')
+    await page.getByTestId('tx-amount-input').fill('8500')
 
     // The budget threshold warning appears
     await expect(page.getByText(/crosses your 80% budget limit/i)).toBeVisible()
