@@ -71,12 +71,6 @@ export default function SignInScreen() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === 'Enter') {
-      void handleSubmit(e as unknown as React.FormEvent)
-    }
-  }
-
   const handleGoogle = async () => {
     clearError()
     setErrorCode(null)
@@ -151,7 +145,7 @@ export default function SignInScreen() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <Input
           id="signin-email"
           type="email"
