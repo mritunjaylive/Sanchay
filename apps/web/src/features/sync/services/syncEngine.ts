@@ -25,7 +25,7 @@ import type { Table } from 'dexie'
 
 const BROADCAST_CHANNEL_NAME = 'sanchay_sync_channel'
 const LOCK_NAME = 'sanchay_sync_leader_lock'
-export const PUSH_BATCH_SIZE = 500
+export const PUSH_BATCH_SIZE = 50
 export const PULL_BATCH_SIZE = 500
 const MAX_PUSH_BATCHES = 10
 
