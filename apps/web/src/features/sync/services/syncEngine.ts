@@ -25,7 +25,7 @@ import type { Table } from 'dexie'
 
 const BROADCAST_CHANNEL_NAME = 'sanchay_sync_channel'
 const LOCK_NAME = 'sanchay_sync_leader_lock'
-export const PUSH_BATCH_SIZE = 500
+export const PUSH_BATCH_SIZE = 1
 export const PULL_BATCH_SIZE = 500
 const MAX_PUSH_BATCHES = 10
 
@@ -589,6 +589,13 @@ export class SyncEngine {
       table: e.table,
       row: e.snapshot,
     }))
+
+    const payload = JSON.stringify(changes)
+    console.log('SYNC PUSH TEST:', {
+      changes: changes.length,
+      payloadBytes: new Blob([payload]).size,
+      payloadKB: Math.round(new Blob([payload]).size / 1024),
+    })
 
     const { data, error } = await this.networkClient.push(changes)
     if (error) throw error
