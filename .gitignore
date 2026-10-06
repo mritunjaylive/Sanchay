@@ -32,6 +32,9 @@ pnpm-debug.log*
 *.env.*
 !.env.example
 !**/.env.example
+# Production env file (contains real anon key – never commit)
+.env.production
+*/.env.production
 
 # Operating System files
 .DS_Store
