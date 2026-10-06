@@ -61,6 +61,8 @@ export function rejectedRowId(item: NonNullable<SyncPushResult['rejected']>[numb
 }
 
 const MAX_AUTH_RETRIES = 2
+/** A sync request that has not answered after this long is aborted (never hang forever). */
+const REQUEST_TIMEOUT_MS = 30_000
 
 /**
  * Returns true when `child` (an outbox entry) holds a foreign key pointing at the failed parent row.
@@ -176,12 +178,16 @@ export class SyncEngine {
       },
       push: async (changes) => {
         const { supabase } = await import('../../../lib/supabase')
-        const { data, error } = await supabase.rpc('sync_push', { changes })
+        const { data, error } = await supabase
+          .rpc('sync_push', { changes })
+          .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS))
         return { data, error: error ? Object.assign(new Error(error.message), { code: error.code }) : null }
       },
       pull: async (params) => {
         const { supabase } = await import('../../../lib/supabase')
-        const { data, error } = await supabase.rpc('sync_pull', params)
+        const { data, error } = await supabase
+          .rpc('sync_pull', params)
+          .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS))
         return { data, error: error ? Object.assign(new Error(error.message), { code: error.code }) : null }
       },
     }
@@ -490,12 +496,19 @@ export class SyncEngine {
       const errCode = String((err as { code?: unknown } | null)?.code ?? '')
 
       // Classify error:
-      if (
-        !this.isOnline() ||
+      // Only report "offline" when the browser itself says there is no network. A fetch that
+      // fails while navigator.onLine is true is a SERVER/GATEWAY problem (e.g. Cloudflare 520,
+      // a timeout, a blocked request) - browsers surface those as an opaque "Failed to fetch"
+      // / CORS error because the error page carries no CORS headers. Calling that "offline"
+      // hid the real problem for hours, so it is reported as an error and retried with backoff.
+      const looksLikeFetchFailure =
         errLower.includes('failed to fetch') ||
-        errLower.includes('network') ||
-        errLower.includes('networkerror')
-      ) {
+        errLower.includes('networkerror') ||
+        errLower.includes('network request failed') ||
+        errLower.includes('load failed') ||
+        errLower.includes('aborted') ||
+        errLower.includes('timeout')
+      if (!this.isOnline()) {
         store.setStatus('offline')
         store.setLastError(null)
         this.broadcastState({ status: 'offline', lastError: null })
@@ -533,7 +546,11 @@ export class SyncEngine {
       this.retryCount++
 
       const errorDetail: SyncErrorDetail = {
-        userMessage: 'Synchronization encountered an error',
+        userMessage: looksLikeFetchFailure
+          ? 'Cannot reach the sync server (it timed out or returned a gateway error such as 520). Your data is safe on this device and will sync automatically.'
+          : errLower.includes('sync_busy')
+            ? 'Another sync is still finishing. Retrying shortly.'
+            : 'Synchronization encountered an error',
         detail: errorMessage,
       }
 
