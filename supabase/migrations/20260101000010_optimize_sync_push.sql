@@ -1,5 +1,5 @@
--- Sanchay: Optimize sync_push by caching column schema
--- Fixes Cloudflare 520 / 524 timeouts caused by querying information_schema in a loop.
+-- Sanchay: Optimize sync_push by caching column schema using pg_attribute
+-- Fixes Cloudflare 520 / 524 timeouts caused by querying information_schema, which is notoriously slow.
 
 create or replace function public.sync_push(changes jsonb)
 returns jsonb
@@ -38,23 +38,24 @@ begin
     raise exception 'Not authenticated';
   end if;
 
-  -- Validate input size (max 500 changes per call)
   if jsonb_array_length(changes) > 500 then
     raise exception 'Too many changes (max 500 per call)' using errcode = '54000';
   end if;
 
-  -- Cache table schemas once to avoid querying information_schema in the loop
+  -- Cache table schemas once using pg_attribute for blistering speed
   select jsonb_object_agg(t.table_name, t.columns)
   into v_table_columns
   from (
-    select table_name, jsonb_agg(column_name) as columns
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = any(v_allowed_tables)
-    group by table_name
+    select c.relname as table_name, jsonb_agg(a.attname) as columns
+    from pg_class c
+    join pg_attribute a on a.attrelid = c.oid
+    where c.relnamespace = 'public'::regnamespace
+      and a.attnum > 0
+      and not a.attisdropped
+      and c.relname = any(v_allowed_tables)
+    group by c.relname
   ) t;
 
-  -- Per-user advisory lock to serialize pushes from multiple devices
   perform pg_advisory_xact_lock(hashtext(v_user_id::text));
 
   for v_change in select * from jsonb_array_elements(changes)
@@ -73,10 +74,8 @@ begin
         raise exception 'Missing id in row for table %', v_table;
       end if;
 
-      -- Cast inside the protected block: a malformed id rejects only this row.
       v_id := v_id_text::uuid;
 
-      -- Clamp timestamps to at most now() + 5 minutes
       v_incoming_updated_at := least(
         (v_row->>'updated_at')::timestamptz,
         v_clamp_limit
@@ -89,10 +88,8 @@ begin
           to_jsonb(least((v_row->>'created_at')::timestamptz, v_clamp_limit)));
       end if;
 
-      -- Enforce user_id
       v_row := jsonb_set(v_row, '{user_id}', to_jsonb(v_user_id));
 
-      -- Get existing row's updated_at and version
       execute format(
         'select updated_at, version from public.%I where id = $1 and user_id = $2',
         v_table
@@ -100,7 +97,6 @@ begin
       using v_id, v_user_id;
 
       if v_existing_updated_at is null then
-        -- New row: compute allowed columns efficiently from cache
         v_col_list := (
           select string_agg(format('%I', value), ', ')
           from jsonb_array_elements_text(v_table_columns->v_table)
@@ -121,12 +117,10 @@ begin
           'version', v_ret_version
         );
       else
-        -- Existing row: LWW check (Last-Writer-Wins)
         if v_incoming_updated_at > v_existing_updated_at
            or (v_incoming_updated_at = v_existing_updated_at
                and (v_row->>'version')::int > v_existing_version) then
 
-          -- Dynamically build SET clause efficiently from cache
           v_set_clause := (
             select string_agg(format('%I = r.%I', value, value), ', ')
             from jsonb_array_elements_text(v_table_columns->v_table)
@@ -150,23 +144,21 @@ begin
             'version', v_ret_version
           );
         else
-          -- Rejected due to conflict (older version)
           rejected := rejected || jsonb_build_object(
             'table', v_table,
             'id', v_id_text,
             'row', v_row,
-            'error', 'Conflict: incoming row is older or same version'
+            'error', 'conflict'
           );
         end if;
       end if;
 
     exception when others then
-      -- Reject only this row; `id` lets the client attribute and quarantine the error.
       rejected := rejected || jsonb_build_object(
         'table', v_table,
         'id', v_id_text,
         'row', v_row,
-        'error', SQLERRM
+        'error', sqlerrm
       );
     end;
   end loop;
