@@ -9,7 +9,7 @@ import { db } from '../db'
 import { upsertWithOutbox, softDeleteWithOutbox } from '../outboxHelper'
 import { uuidv7, uuidv5 } from '../../lib/ids'
 import { occurrences } from '../../domain/recurrence'
-import { subtractOneYear } from '../../domain/dates'
+import { subtractOneYear, todayLocal } from '../../domain/dates'
 import { transactionRepo } from './transactionRepo'
 import type { RecurringRule, RecurringOverride } from '@sanchay/shared'
 
@@ -97,13 +97,17 @@ export const recurringRepo = {
    */
   async materializeDueOccurrences(
     userId: string,
-    todayStr = new Date().toISOString().substring(0, 10),
+    todayStr = todayLocal(),
   ): Promise<number> {
+    // Paused rules must not post anything.
     const activeRules = await db.recurringRules
       .where('userId')
       .equals(userId)
-      .and((r) => !r.deletedAt && r.mode === 'auto_post')
+      .and((r) => !r.deletedAt && !r.pausedAt && r.mode === 'auto_post')
       .toArray()
+
+    const profile = await db.profiles.filter((p) => p.userId === userId && !p.deletedAt).first()
+    const baseCurrency = profile?.baseCurrency ?? null
 
     let createdCount = 0
     const oneYearAgo = subtractOneYear(todayStr)
@@ -143,6 +147,24 @@ export const recurringRepo = {
         const accountId = rule.accountId
         const toAccountId = rule.toAccountId ?? null
 
+        // Base amount must be expressed in the base currency, not the account's currency.
+        let baseAmountMinor = amountMinor
+        let fxRate = '1'
+        const account = await db.accounts.get(accountId)
+        if (account && baseCurrency && account.currency.toUpperCase() !== baseCurrency.toUpperCase()) {
+          try {
+            const { fxService } = await import('../../features/fx/services/fxService')
+            const converted = await fxService.convert(amountMinor, account.currency, baseCurrency, occurrenceDate)
+            baseAmountMinor = converted.baseAmountMinor
+            fxRate = converted.rateUsed
+          } catch (err) {
+            // No usable rate right now: leave this occurrence for the next sync instead of
+            // posting a transaction with a wrong base amount.
+            console.warn('[Recurring] FX conversion failed; deferring occurrence', occurrenceDate, err)
+            continue
+          }
+        }
+
         await transactionRepo.create({
           id: deterministicId,
           userId,
@@ -151,8 +173,8 @@ export const recurringRepo = {
           toAccountId,
           amountMinor,
           toAmountMinor: rule.type === 'transfer' ? amountMinor : null,
-          baseAmountMinor: amountMinor,
-          fxRate: '1',
+          baseAmountMinor,
+          fxRate,
           occurredOn: occurrenceDate,
           occurredTime: null,
           categoryId: rule.categoryId,

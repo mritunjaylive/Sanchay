@@ -59,6 +59,8 @@ export function accountBalance(account: Account, transactions: Transaction[]): n
  * Used for balance history charts.
  */
 export function balanceOn(account: Account, transactions: Transaction[], asOfDate: string): number {
+  // The account did not exist yet: its opening balance must not appear in earlier history.
+  if (asOfDate < account.openingDate) return 0
   const filtered = transactions.filter((tx) => tx.occurredOn <= asOfDate)
   return accountBalance(account, filtered)
 }
@@ -79,6 +81,7 @@ export function netWorth(
   let liabilities = 0
 
   for (const account of accounts) {
+    if (account.deletedAt) continue
     if (account.archivedAt) continue
     if (account.excludeFromNetWorth) continue
 

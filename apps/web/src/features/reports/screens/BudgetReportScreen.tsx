@@ -71,9 +71,10 @@ export default function BudgetReportScreen() {
         `${currentMonth}-01`,
         monthStartDay,
         todayStr,
+        categories ?? [],
       ),
     )
-  }, [allBudgets, transactions, currentMonth, monthStartDay, todayStr])
+  }, [allBudgets, transactions, categories, currentMonth, monthStartDay, todayStr])
 
   const chartData = useMemo(() => {
     return reports.map((item) => {

@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 serve(async (req) => {
@@ -47,37 +48,51 @@ serve(async (req) => {
   try {
     // 1. Delete user files from 'receipts' storage bucket
     try {
-      const { data: files } = await adminClient.storage
-        .from('receipts')
-        .list(userId)
+      // list() returns at most `limit` entries per call, so page until the folder is empty.
+      const PAGE = 100
+      for (let guard = 0; guard < 1000; guard++) {
+        const { data: files, error: listError } = await adminClient.storage
+          .from('receipts')
+          .list(userId, { limit: PAGE })
+        if (listError) throw listError
+        if (!files || files.length === 0) break
 
-      if (files && files.length > 0) {
         const filePaths = files.map((f) => `${userId}/${f.name}`)
-        await adminClient.storage.from('receipts').remove(filePaths)
+        const { error: removeError } = await adminClient.storage.from('receipts').remove(filePaths)
+        if (removeError) throw removeError
+        if (files.length < PAGE) break
       }
     } catch (storageErr) {
       console.warn('Storage cleanup warning:', storageErr)
     }
 
     // 2. Delete all rows belonging to the user in dependency order
+    // Children first: tables are linked by foreign keys without ON DELETE CASCADE.
     const tablesToDelete = [
       'notifications',
+      'saved_filters',
+      'transaction_tags',
+      'attachments',
       'goal_contributions',
-      'goals',
-      'loan_payments',
-      'loans',
-      'recurring_rules',
+      'recurring_overrides',
       'budgets',
       'transactions',
+      'loan_terms',
+      'goals',
+      'recurring_rules',
+      'tags',
       'categories',
       'accounts',
-      'saved_filters',
       'push_subscriptions',
+      'sync_purge_state',
       'profiles',
     ]
 
     for (const table of tablesToDelete) {
-      await adminClient.from(table).delete().eq('user_id', userId)
+      const { error: deleteError } = await adminClient.from(table).delete().eq('user_id', userId)
+      if (deleteError) {
+        throw new Error(`Failed to delete ${table}: ${deleteError.message}`)
+      }
     }
 
     // 3. Delete the auth user

@@ -70,7 +70,14 @@ export function UserProfileMenu() {
 
   const handleSignOut = async () => {
     setIsOpen(false)
-    await signOut()
+    const result = await signOut()
+    if (!result.ok) {
+      const proceed = window.confirm(
+        `${result.pending} change(s) have not synced yet. Signing out now will permanently discard them. Sign out anyway?`,
+      )
+      if (!proceed) return
+      await signOut({ discardUnsynced: true })
+    }
     navigate('/auth/sign-in')
   }
 

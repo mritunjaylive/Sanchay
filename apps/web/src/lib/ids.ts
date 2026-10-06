@@ -42,7 +42,8 @@ export function uuidv7(): string {
     hex8(rand[9]!),
   ]
 
-  return `${hex[0]}${hex[1]}-${hex[2]}${hex[3]}-${hex[4]}${hex[5]}-${hex[6]}${hex[7]}-${hex[8]}${hex[9]}${hex[10]}${hex[11]}`
+  // Canonical 8-4-4-4-12 layout: ts_hi(8) - ts_lo(4) - ver+rand(4) - var+rand(4) - rand(12)
+  return `${hex[0]}-${hex[1]}-${hex[2]}${hex[3]}-${hex[4]}${hex[5]}-${hex[6]}${hex[7]}${hex[8]}${hex[9]}${hex[10]}${hex[11]}`
 }
 
 // ── UUIDv5 (SHA-1 namespace) ───────────────────────────────────────────────

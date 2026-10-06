@@ -27,12 +27,9 @@ export const notificationRepo = {
   ): Promise<Notification | null> {
     // If dedupeKey is specified, check if one already exists
     if (data.dedupeKey) {
-      const existing = await db.notifications
-        .where('dedupeKey')
-        .equals(data.dedupeKey)
-        .and((n) => !n.deletedAt)
-        .first()
-      if (existing) return existing
+      const existing = await db.notifications.where('dedupeKey').equals(data.dedupeKey).first()
+      // A notification the user already dismissed (soft-deleted) must not be recreated.
+      if (existing) return existing.deletedAt ? null : existing
     }
 
     const now = new Date().toISOString()

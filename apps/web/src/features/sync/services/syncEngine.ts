@@ -31,7 +31,83 @@ const MAX_PUSH_BATCHES = 10
 
 export interface SyncPushResult {
   accepted?: Array<{ table: string; id: string; version: number; server_seq: number }>
-  rejected?: Array<{ table: string; id: string; server_row?: Record<string, unknown>; error?: string }>
+  rejected?: Array<{
+    table: string
+    /** Row id (older servers only send `row`; see `rejectedRowId`). */
+    id?: string
+    row?: { id?: string } & Record<string, unknown>
+    server_row?: Record<string, unknown>
+    error?: string
+  }>
+}
+
+/** Parses an ISO timestamp (any offset / precision) to epoch ms. Returns NaN when invalid. */
+export function tsMs(value: string | null | undefined): number {
+  if (!value) return Number.NaN
+  return Date.parse(value)
+}
+
+/** True when `a` is strictly later than `b`. Falls back to string compare when unparsable. */
+export function isLater(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = tsMs(a)
+  const y = tsMs(b)
+  if (Number.isNaN(x) || Number.isNaN(y)) return (a ?? '') > (b ?? '')
+  return x > y
+}
+
+/** Extracts the row id from a rejected push item regardless of server version. */
+export function rejectedRowId(item: NonNullable<SyncPushResult['rejected']>[number]): string | undefined {
+  return item.id ?? (item.row && typeof item.row.id === 'string' ? item.row.id : undefined)
+}
+
+const MAX_AUTH_RETRIES = 2
+
+/**
+ * Returns true when `child` (an outbox entry) holds a foreign key pointing at the failed parent row.
+ * Snapshot keys are snake_case (see mapper.toServer).
+ */
+function isDependentOf(
+  child: { table: string; snapshot?: unknown },
+  parentTable: string,
+  parentRowId: string,
+): boolean {
+  const snap = child.snapshot as Record<string, unknown> | undefined
+  if (!snap) return false
+  switch (parentTable) {
+    case 'accounts':
+      return (
+        (child.table === 'transactions' &&
+          (snap.account_id === parentRowId || snap.to_account_id === parentRowId)) ||
+        (child.table === 'recurring_rules' &&
+          (snap.account_id === parentRowId || snap.to_account_id === parentRowId)) ||
+        (child.table === 'loan_terms' && snap.account_id === parentRowId) ||
+        (child.table === 'goals' && snap.linked_account_id === parentRowId)
+      )
+    case 'categories':
+      return (
+        (child.table === 'transactions' && snap.category_id === parentRowId) ||
+        (child.table === 'budgets' && snap.category_id === parentRowId) ||
+        (child.table === 'recurring_rules' && snap.category_id === parentRowId) ||
+        (child.table === 'loan_terms' && snap.interest_category_id === parentRowId) ||
+        (child.table === 'categories' && snap.parent_id === parentRowId)
+      )
+    case 'recurring_rules':
+      return (
+        (child.table === 'recurring_overrides' && snap.rule_id === parentRowId) ||
+        (child.table === 'transactions' && snap.recurring_rule_id === parentRowId)
+      )
+    case 'goals':
+      return child.table === 'goal_contributions' && snap.goal_id === parentRowId
+    case 'transactions':
+      return (
+        (child.table === 'transaction_tags' && snap.transaction_id === parentRowId) ||
+        (child.table === 'attachments' && snap.transaction_id === parentRowId)
+      )
+    case 'tags':
+      return child.table === 'transaction_tags' && snap.tag_id === parentRowId
+    default:
+      return false
+  }
 }
 
 export interface SyncPullResult {
@@ -78,6 +154,8 @@ export class SyncEngine {
   private debounceTimer: number | null = null
   private retryTimer: number | null = null
   private retryCount = 0
+  private authRetryCount = 0
+  private releaseLock: (() => void) | null = null
 
   private networkClient: SyncNetworkClient
   private clock: () => Date
@@ -99,12 +177,12 @@ export class SyncEngine {
       push: async (changes) => {
         const { supabase } = await import('../../../lib/supabase')
         const { data, error } = await supabase.rpc('sync_push', { changes })
-        return { data, error: error ? new Error(error.message) : null }
+        return { data, error: error ? Object.assign(new Error(error.message), { code: error.code }) : null }
       },
       pull: async (params) => {
         const { supabase } = await import('../../../lib/supabase')
         const { data, error } = await supabase.rpc('sync_pull', params)
-        return { data, error: error ? new Error(error.message) : null }
+        return { data, error: error ? Object.assign(new Error(error.message), { code: error.code }) : null }
       },
     }
 
@@ -152,6 +230,11 @@ export class SyncEngine {
       this.channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME)
       this.channel.onmessage = (event) => {
         const { type, payload } = event.data || {}
+        if (type === 'SYNC_REQUEST') {
+          // A follower tab wrote data; the leader must push it even if this tab is hidden.
+          if (this.isLeader) this.triggerSync(true)
+          return
+        }
         if (type === 'SYNC_STATE_CHANGED' && payload) {
           const store = useSyncStore.getState()
           if (payload.status) store.setStatus(payload.status)
@@ -195,7 +278,9 @@ export class SyncEngine {
 
   private acquireLeaderLock(): void {
     this.requestLock(LOCK_NAME, () =>
-      new Promise<void>(() => {
+      new Promise<void>((resolve) => {
+        // Keep the lock until destroy() so a re-init (StrictMode / HMR) can re-acquire it.
+        this.releaseLock = resolve
         this.isLeader = true
         this.startLeaderLoop()
       }),
@@ -207,6 +292,7 @@ export class SyncEngine {
   private startLeaderLoop(): void {
     if (typeof window === 'undefined') return
 
+    if (this.syncTimer) window.clearInterval(this.syncTimer)
     this.syncTimer = window.setInterval(() => {
       if (document.visibilityState === 'visible' && !this.isSyncing) {
         this.sync()
@@ -219,6 +305,12 @@ export class SyncEngine {
   destroy(): void {
     _initialized = false
     if (this.syncTimer) clearInterval(this.syncTimer)
+    this.syncTimer = null
+    if (this.releaseLock) {
+      this.releaseLock()
+      this.releaseLock = null
+    }
+    this.isLeader = false
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     if (this.retryTimer) clearTimeout(this.retryTimer)
 
@@ -269,10 +361,24 @@ export class SyncEngine {
       return
     }
 
+    if (!this.isLeader) {
+      // Only the leader tab talks to the server; ask it to sync on our behalf.
+      this.broadcastRaw({ type: 'SYNC_REQUEST' })
+      return
+    }
+
     if (immediate) {
       this.sync()
     } else {
       setTimeout(() => this.sync(), 100)
+    }
+  }
+
+  private broadcastRaw(message: Record<string, unknown>): void {
+    try {
+      this.channel?.postMessage(message)
+    } catch {
+      // Ignore broadcast errors
     }
   }
 
@@ -282,8 +388,27 @@ export class SyncEngine {
     await this.pullPhase()
   }
 
-  async sync(): Promise<void> {
-    if (!this.isLeader || this.isSyncing) return
+  /**
+   * Best-effort final push, e.g. before signing out. Works from any tab (not only the leader),
+   * waits for an in-flight sync, and resolves with the number of outbox rows still unsynced.
+   */
+  async flush(timeoutMs = 8000): Promise<number> {
+    const deadline = Date.now() + timeoutMs
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+    try {
+      if (this.isOnline()) {
+        while (this.isSyncing && Date.now() < deadline) await sleep(100)
+        await Promise.race([this.sync(true), sleep(Math.max(0, deadline - Date.now()))])
+      }
+    } catch {
+      // Fall through: report whatever is still pending.
+    }
+    return db.outbox.count()
+  }
+
+  async sync(force = false): Promise<void> {
+    if ((!this.isLeader && !force) || this.isSyncing) return
     if (!this.isOnline()) {
       useSyncStore.getState().setStatus('offline')
       return
@@ -341,6 +466,7 @@ export class SyncEngine {
 
       // Success
       this.retryCount = 0
+      this.authRetryCount = 0
       const now = this.clock().toISOString()
       const pendingCount = await this.updatePendingCount()
       const failedCount = await db.outbox.where('status').equals('failed').count()
@@ -361,6 +487,7 @@ export class SyncEngine {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       const errLower = errorMessage.toLowerCase()
+      const errCode = String((err as { code?: unknown } | null)?.code ?? '')
 
       // Classify error:
       if (
@@ -377,19 +504,24 @@ export class SyncEngine {
 
       if (
         errLower.includes('jwt') ||
-        errLower.includes('401') ||
+        errCode === 'PGRST301' ||
+        errCode === '401' ||
+        /\bhttp 401\b|\bstatus 401\b/.test(errLower) ||
         errLower.includes('unauthorized') ||
         errLower.includes('token expired')
       ) {
-        try {
-          const { supabase } = await import('../../../lib/supabase')
-          const { error: refreshErr } = await supabase.auth.refreshSession()
-          if (!refreshErr) {
-            setTimeout(() => this.sync(), 500)
-            return
+        if (this.authRetryCount < MAX_AUTH_RETRIES) {
+          this.authRetryCount++
+          try {
+            const { supabase } = await import('../../../lib/supabase')
+            const { error: refreshErr } = await supabase.auth.refreshSession()
+            if (!refreshErr) {
+              setTimeout(() => this.sync(), 500)
+              return
+            }
+          } catch {
+            // refresh failed
           }
-        } catch {
-          // refresh failed
         }
         store.setStatus('auth_required')
         store.setLastError('Sign in required')
@@ -431,25 +563,29 @@ export class SyncEngine {
    * Pushes one batch of pending changes. Returns true if there are more pending entries.
    */
   private async pushPhase(): Promise<boolean> {
-    // Only select pending outbox items (quarantining failed & blocked)
-    const outboxEntries = await db.outbox
-      .filter((e) => !e.status || e.status === 'pending')
-      .limit(PUSH_BATCH_SIZE)
-      .toArray()
+    // Select pending entries in FK-dependency (table) order across batches, so a child row is
+    // never pushed in an earlier batch than its parent. Failed / blocked entries are quarantined.
+    const outboxEntries: OutboxEntry[] = []
+    for (const tbl of TABLES) {
+      const remaining = PUSH_BATCH_SIZE - outboxEntries.length
+      if (remaining <= 0) break
+      const rows = await db.outbox
+        .where('table')
+        .equals(tbl)
+        .filter((e) => !e.status || e.status === 'pending')
+        .limit(remaining)
+        .toArray()
+      outboxEntries.push(...rows)
+    }
 
     if (outboxEntries.length === 0) return false
 
-    // Sort entries by dependency order
-    const tableOrderMap = new Map<string, number>()
-    TABLES.forEach((tbl, idx) => tableOrderMap.set(tbl, idx))
+    // Remember exactly what was sent, so that edits made while the request is in flight are
+    // never discarded when the server acknowledges the older snapshot.
+    const sent = new Map<string, OutboxEntry>()
+    for (const e of outboxEntries) sent.set(`${e.table}:${e.rowId}`, e)
 
-    const sortedEntries = [...outboxEntries].sort((a, b) => {
-      const orderA = tableOrderMap.get(a.table) ?? 999
-      const orderB = tableOrderMap.get(b.table) ?? 999
-      return orderA - orderB
-    })
-
-    const changes = sortedEntries.map((e) => ({
+    const changes = outboxEntries.map((e) => ({
       table: e.table,
       row: e.snapshot,
     }))
@@ -457,10 +593,18 @@ export class SyncEngine {
     const { data, error } = await this.networkClient.push(changes)
     if (error) throw error
 
-    // Remove accepted changes from outbox
     const acceptedList = data?.accepted ?? []
     const rejectedList = data?.rejected ?? []
 
+    /** True when the outbox entry was modified after it was sent. */
+    const changedSinceSent = (current: OutboxEntry, original: OutboxEntry | undefined): boolean => {
+      if (!original) return false
+      const curVersion = (current.snapshot as Record<string, unknown> | undefined)?.version
+      const oldVersion = (original.snapshot as Record<string, unknown> | undefined)?.version
+      return current.updatedAt !== original.updatedAt || curVersion !== oldVersion
+    }
+
+    // Remove accepted changes from outbox (only when they were not edited again meanwhile)
     await db.transaction('rw', db.outbox, async () => {
       for (const item of acceptedList) {
         const matching = await db.outbox
@@ -468,79 +612,79 @@ export class SyncEngine {
           .equals(item.table)
           .and((e) => e.rowId === item.id)
           .first()
-        if (matching?.id) {
-          await db.outbox.delete(matching.id)
-        }
+        if (!matching?.id) continue
+        if (changedSinceSent(matching, sent.get(`${item.table}:${item.id}`))) continue
+        await db.outbox.delete(matching.id)
       }
     })
 
     // Handle rejected changes
-    if (rejectedList.length > 0) {
-      for (const item of rejectedList) {
-        if (item.server_row) {
-          // LWW resolution
-          const tableName = item.table as TableName
-          const tbl = this.getTableInstance(tableName)
-          if (tbl) {
-            const localRow = fromServer(item.server_row) as Record<string, unknown> & {
-              id: string
-              updatedAt?: string
-            }
-            await db.transaction('rw', [tbl, db.outbox], async () => {
-              const pendingOutbox = await db.outbox
-                .where('table')
-                .equals(tableName)
-                .and((e) => e.rowId === item.id)
-                .first()
+    for (const item of rejectedList) {
+      const rowId = rejectedRowId(item)
+      if (!rowId) continue
+      const original = sent.get(`${item.table}:${rowId}`)
 
-              if (!pendingOutbox || !localRow.updatedAt || localRow.updatedAt > pendingOutbox.updatedAt) {
-                await (tbl as Table<unknown, string>).put(localRow)
-              }
-
-              if (pendingOutbox?.id) {
-                await db.outbox.delete(pendingOutbox.id)
-              }
-            })
-          }
-        } else if (item.error) {
-          // Error-only rejection (e.g. FK, constraint, check violation)
-          // Increment attempts, store error, and quarantine if permanent
-          const matching = await db.outbox
+      if (item.server_row) {
+        // LWW resolution: the server already holds a newer (or equal) version of this row.
+        const tableName = item.table as TableName
+        const tbl = this.getTableInstance(tableName)
+        if (!tbl) continue
+        const serverRow = fromServer(item.server_row) as Record<string, unknown> & {
+          id: string
+          updatedAt?: string
+        }
+        await db.transaction('rw', [tbl, db.outbox], async () => {
+          const pendingOutbox = await db.outbox
             .where('table')
-            .equals(item.table)
-            .and((e) => e.rowId === item.id)
+            .equals(tableName)
+            .and((e) => e.rowId === rowId)
             .first()
 
-          if (matching?.id) {
-            const attempts = (matching.attempts ?? matching.attempt ?? 0) + 1
-            const lastError = item.error
-            const lastAttemptAt = this.clock().toISOString()
-            const errLower = lastError.toLowerCase()
+          // If the user edited the row again after we sent it, keep that newer local edit
+          // (and its outbox entry) so it is pushed on the next sync.
+          if (pendingOutbox && changedSinceSent(pendingOutbox, original)) return
 
-            const isPermanent =
-              errLower.includes('foreign key') ||
-              errLower.includes('violates foreign key') ||
-              errLower.includes('violates check') ||
-              errLower.includes('violates not-null') ||
-              errLower.includes('violates unique') ||
-              errLower.includes('duplicate key') ||
-              errLower.includes('not allowed') ||
-              errLower.includes('permission denied') ||
-              attempts >= 3
+          await (tbl as Table<unknown, string>).put(serverRow)
+          if (pendingOutbox?.id) await db.outbox.delete(pendingOutbox.id)
+        })
+      } else if (item.error) {
+        // Error-only rejection (e.g. FK, constraint, check violation)
+        // Increment attempts, store error, and quarantine if permanent
+        const matching = await db.outbox
+          .where('table')
+          .equals(item.table)
+          .and((e) => e.rowId === rowId)
+          .first()
 
-            const status = isPermanent ? 'failed' : 'pending'
+        if (matching?.id) {
+          const attempts = (matching.attempts ?? matching.attempt ?? 0) + 1
+          const lastError = item.error
+          const lastAttemptAt = this.clock().toISOString()
+          const errLower = lastError.toLowerCase()
 
-            await db.outbox.update(matching.id, {
-              attempts,
-              attempt: attempts,
-              lastError,
-              lastAttemptAt,
-              status,
-            })
+          const isPermanent =
+            errLower.includes('foreign key') ||
+            errLower.includes('violates foreign key') ||
+            errLower.includes('violates check') ||
+            errLower.includes('violates not-null') ||
+            errLower.includes('violates unique') ||
+            errLower.includes('duplicate key') ||
+            errLower.includes('not allowed') ||
+            errLower.includes('permission denied') ||
+            attempts >= 3
 
-            if (status === 'failed') {
-              await this.blockDependentOutboxRows(item.table as TableName, item.id)
-            }
+          const status = isPermanent ? 'failed' : 'pending'
+
+          await db.outbox.update(matching.id, {
+            attempts,
+            attempt: attempts,
+            lastError,
+            lastAttemptAt,
+            status,
+          })
+
+          if (status === 'failed') {
+            await this.blockDependentOutboxRows(item.table as TableName, rowId)
           }
         }
       }
@@ -558,40 +702,7 @@ export class SyncEngine {
       .toArray()
 
     for (const child of childPending) {
-      let isDependent = false
-      const snap = child.snapshot as Record<string, unknown> | undefined
-      if (!snap) continue
-
-      if (parentTable === 'accounts') {
-        if (
-          child.table === 'transactions' &&
-          (snap.account_id === parentRowId || snap.destination_account_id === parentRowId)
-        ) {
-          isDependent = true
-        } else if (child.table === 'loan_terms' && snap.account_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'categories') {
-        if (child.table === 'transactions' && snap.category_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'budgets' && snap.category_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'recurring_rules' && snap.category_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'recurring_rules') {
-        if (child.table === 'recurring_overrides' && snap.rule_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'transactions' && snap.recurring_rule_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'goals') {
-        if (child.table === 'goal_contributions' && snap.goal_id === parentRowId) {
-          isDependent = true
-        }
-      }
-
-      if (isDependent && child.id) {
+      if (child.id && isDependentOf(child, parentTable, parentRowId)) {
         await db.outbox.update(child.id, { status: 'blocked' })
       }
     }
@@ -604,40 +715,7 @@ export class SyncEngine {
     const blockedRows = await db.outbox.where('status').equals('blocked').toArray()
 
     for (const child of blockedRows) {
-      let isDependent = false
-      const snap = child.snapshot as Record<string, unknown> | undefined
-      if (!snap) continue
-
-      if (parentTable === 'accounts') {
-        if (
-          child.table === 'transactions' &&
-          (snap.account_id === parentRowId || snap.destination_account_id === parentRowId)
-        ) {
-          isDependent = true
-        } else if (child.table === 'loan_terms' && snap.account_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'categories') {
-        if (child.table === 'transactions' && snap.category_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'budgets' && snap.category_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'recurring_rules' && snap.category_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'recurring_rules') {
-        if (child.table === 'recurring_overrides' && snap.rule_id === parentRowId) {
-          isDependent = true
-        } else if (child.table === 'transactions' && snap.recurring_rule_id === parentRowId) {
-          isDependent = true
-        }
-      } else if (parentTable === 'goals') {
-        if (child.table === 'goal_contributions' && snap.goal_id === parentRowId) {
-          isDependent = true
-        }
-      }
-
-      if (isDependent && child.id) {
+      if (child.id && isDependentOf(child, parentTable, parentRowId)) {
         await db.outbox.update(child.id, { status: 'pending' })
       }
     }
@@ -669,6 +747,9 @@ export class SyncEngine {
     let isFirstPage = true
     const state = await db.syncState.get(table)
     let currentCursor = state?.cursor ?? 0
+    // Set after a server `reset_required`: ids seen during the full re-pull.
+    let resetSeenIds: Set<string> | null = null
+    let completed = false
 
     while (hasMore) {
       const { data, error } = await this.networkClient.pull({
@@ -682,13 +763,16 @@ export class SyncEngine {
       if (!data) break
 
       if (data.reset_required) {
-        console.warn(`[Sync] reset_required received for table ${table}; resetting cursor to 0 and re-pulling`)
-        if (this.onResetRequired) {
-          await this.onResetRequired()
-        } else {
-          await db.syncState.put({ table, cursor: 0, lastSyncAt: null })
+        if (resetSeenIds) {
+          throw new Error(`Sync pull aborted: server requested reset again for table ${table}`)
         }
-        break
+        console.warn(`[Sync] reset_required received for table ${table}; re-pulling from cursor 0`)
+        resetSeenIds = new Set<string>()
+        currentCursor = 0
+        isFirstPage = false
+        await db.syncState.put({ table, cursor: 0, lastSyncAt: null })
+        if (this.onResetRequired) await this.onResetRequired()
+        continue
       }
 
       const rows: Array<Record<string, unknown>> = data.rows ?? []
@@ -703,17 +787,39 @@ export class SyncEngine {
 
       if (rows.length > 0) {
         await this.applyPulledRows(table, rows)
+        if (resetSeenIds) for (const r of rows) resetSeenIds.add(String(r.id))
       }
 
-      currentCursor = nextCursor
+      // The cursor must never move backwards (the overlap window can return older rows only).
+      currentCursor = Math.max(currentCursor, nextCursor)
       isFirstPage = false
 
       await db.syncState.put({
         table,
-        cursor: nextCursor,
+        cursor: currentCursor,
         lastSyncAt: this.clock().toISOString(),
       })
+      if (!hasMore) completed = true
     }
+
+    // After a full re-pull, drop local rows the server no longer has (purged tombstones),
+    // except rows with unsynced local changes.
+    if (resetSeenIds && completed) {
+      await this.reconcileAfterReset(table, resetSeenIds)
+    }
+  }
+
+  private async reconcileAfterReset(table: TableName, seenIds: Set<string>): Promise<void> {
+    const tableInstance = this.getTableInstance(table)
+    if (!tableInstance) return
+    await db.transaction('rw', [tableInstance, db.outbox], async () => {
+      const pending = new Set(
+        (await db.outbox.where('table').equals(table).toArray()).map((e) => e.rowId),
+      )
+      await (tableInstance as Table<{ id: string }, string>)
+        .filter((r) => !seenIds.has(r.id) && !pending.has(r.id))
+        .delete()
+    })
   }
 
   private async applyPulledRows(
@@ -739,8 +845,8 @@ export class SyncEngine {
           .and((e) => e.rowId === id)
           .first()
 
-        if (pendingOutbox && localRow.updatedAt && pendingOutbox.updatedAt >= localRow.updatedAt) {
-          // Local change is newer; keep local
+        if (pendingOutbox && localRow.updatedAt && !isLater(localRow.updatedAt, pendingOutbox.updatedAt)) {
+          // Local change is newer (or equal); keep local
           continue
         }
 

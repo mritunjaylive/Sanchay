@@ -7,7 +7,34 @@
  */
 
 import type { Budget, Transaction } from '@sanchay/shared'
-import { periodFor, subtractOneMonth } from './dates'
+import { daysBetween, periodForLabel, subtractOneMonth } from './dates'
+
+/** Minimal category shape needed to resolve sub-category membership. */
+export interface CategoryRef {
+  id: string
+  parentId?: string | null
+}
+
+/**
+ * The set of category ids a budget on `categoryId` covers: the category itself plus all of its
+ * descendants. Returns null for the overall budget (every category).
+ */
+function coveredCategoryIds(categoryId: string | null, categories?: CategoryRef[]): Set<string> | null {
+  if (!categoryId) return null
+  const ids = new Set<string>([categoryId])
+  if (!categories || categories.length === 0) return ids
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const c of categories) {
+      if (c.parentId && ids.has(c.parentId) && !ids.has(c.id)) {
+        ids.add(c.id)
+        grew = true
+      }
+    }
+  }
+  return ids
+}
 
 export interface BudgetStatus {
   budget: Budget
@@ -51,8 +78,10 @@ export function calculateRollover(
   allTransactions: Transaction[],
   targetMonth: string,
   monthStartDay = 1,
+  categories?: CategoryRef[],
 ): number {
   if (!budget.rollover) return 0
+  const covered = coveredCategoryIds(budget.categoryId, categories)
 
   let currentCarry = 0
   const monthsToCheck: string[] = []
@@ -72,13 +101,13 @@ export function calculateRollover(
     }
 
     // Calculate spent in month m
-    const { start, end } = periodFor(`${m}-01`, monthStartDay)
+    const { start, end } = periodForLabel(m, monthStartDay)
     const spent = allTransactions
       .filter((tx) => {
         if (tx.deletedAt) return false
         if (tx.type !== 'expense') return false
         if (tx.occurredOn < start || tx.occurredOn > end) return false
-        if (budget.categoryId && tx.categoryId !== budget.categoryId) return false
+        if (covered && (!tx.categoryId || !covered.has(tx.categoryId))) return false
         return true
       })
       .reduce((sum, tx) => sum + (tx.baseAmountMinor ?? tx.amountMinor), 0)
@@ -100,20 +129,30 @@ export function calculateBudgetStatus(
   monthDateStr: string, // e.g. "2026-10-01"
   monthStartDay = 1,
   todayStr: string,
+  categories?: CategoryRef[],
 ): BudgetStatus {
-  const { start, end } = periodFor(monthDateStr, monthStartDay)
+  // The month label names the period that STARTS in that calendar month (works for any start day).
   const targetMonth = monthDateStr.substring(0, 7)
+  const { start, end } = periodForLabel(targetMonth, monthStartDay)
 
-  const rolloverMinor = calculateRollover(budget, allBudgets, allTransactions, targetMonth, monthStartDay)
+  const rolloverMinor = calculateRollover(
+    budget,
+    allBudgets,
+    allTransactions,
+    targetMonth,
+    monthStartDay,
+    categories,
+  )
   const totalAllowedMinor = budget.amountMinor + rolloverMinor
 
   // Category and subcategory matching
+  const covered = coveredCategoryIds(budget.categoryId, categories)
   const spentMinor = allTransactions
     .filter((tx) => {
       if (tx.deletedAt) return false
       if (tx.type !== 'expense') return false
       if (tx.occurredOn < start || tx.occurredOn > end) return false
-      if (budget.categoryId && tx.categoryId !== budget.categoryId) return false
+      if (covered && (!tx.categoryId || !covered.has(tx.categoryId))) return false
       return true
     })
     .reduce((sum, tx) => sum + (tx.baseAmountMinor ?? tx.amountMinor), 0)
@@ -121,9 +160,11 @@ export function calculateBudgetStatus(
   const remainingMinor = totalAllowedMinor - spentMinor
   const percentUsed = totalAllowedMinor > 0 ? (spentMinor / totalAllowedMinor) * 100 : 0
 
-  const firstThreshold = budget.alertThresholds?.[0] ?? 80
+  // Use the lowest configured threshold regardless of array order.
+  const thresholds = (budget.alertThresholds ?? []).filter((t) => Number.isFinite(t) && t > 0)
+  const firstThreshold = thresholds.length > 0 ? Math.min(...thresholds) : 80
   let status: 'ok' | 'warning' | 'over' = 'ok'
-  if (percentUsed >= 100) {
+  if (percentUsed >= 100 || (totalAllowedMinor <= 0 && spentMinor > 0)) {
     status = 'over'
   } else if (percentUsed >= firstThreshold) {
     status = 'warning'
@@ -132,10 +173,8 @@ export function calculateBudgetStatus(
   // Calculate daily allowance if today is inside the period
   let dailyAllowanceMinor = 0
   if (todayStr >= start && todayStr <= end && remainingMinor > 0) {
-    // Days remaining including today
-    const currentDay = parseInt(todayStr.split('-')[2]!, 10)
-    const endDay = parseInt(end.split('-')[2]!, 10)
-    const daysLeft = Math.max(1, endDay - currentDay + 1)
+    // Days remaining including today (correct even when the period spans two calendar months)
+    const daysLeft = Math.max(1, daysBetween(todayStr, end) + 1)
     dailyAllowanceMinor = Math.floor(remainingMinor / daysLeft)
   }
 

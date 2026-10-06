@@ -180,7 +180,9 @@ export function recordEmiTransactions(
   | { principalMinor: number; interestMinor: number; totalMinor: number } {
   if (installmentNo !== undefined && 'annualRateBps' in paramsOrTerms) {
     const schedule = amortizationSchedule(paramsOrTerms as LoanTerms)
-    const row = schedule[installmentNo - 1] ?? schedule[0]!
+    const row = schedule[installmentNo - 1]
+    // An installment outside the schedule has nothing to record (never fall back to installment 1).
+    if (!row) return { principalMinor: 0, interestMinor: 0, totalMinor: 0 }
     return {
       principalMinor: row.principalMinor,
       interestMinor: row.interestMinor,
@@ -245,7 +247,11 @@ function flatSchedule(
 
   const totalInterest = roundHalfAwayFromZero(principalMinor * annualRate * (tenureMonths / 12))
   const interestPerInstallment = roundHalfAwayFromZero(totalInterest / tenureMonths)
-  const principalPerInstallment = roundHalfAwayFromZero(principalMinor / tenureMonths)
+  // Honour a user-supplied EMI: principal per installment = EMI - interest. Otherwise split evenly.
+  const principalPerInstallment =
+    terms.emiMinor !== null && terms.emiMinor !== undefined && emi - interestPerInstallment > 0
+      ? emi - interestPerInstallment
+      : roundHalfAwayFromZero(principalMinor / tenureMonths)
 
   let outstanding = principalMinor - prepaidPrincipal
   let dueDate = firstDueDate(startDate, paymentDay ?? 1)
@@ -253,7 +259,11 @@ function flatSchedule(
   for (let i = 0; i < tenureMonths && outstanding > 0; i++) {
     const isLast = i === tenureMonths - 1
     const principalPart = isLast ? outstanding : Math.min(principalPerInstallment, outstanding)
-    const total = principalPart + interestPerInstallment
+    // The final installment absorbs interest rounding drift so total interest equals `totalInterest`.
+    const interestPart = isLast
+      ? Math.max(0, totalInterest - interestPerInstallment * (tenureMonths - 1))
+      : interestPerInstallment
+    const total = principalPart + interestPart
 
     outstanding -= principalPart
 
@@ -263,8 +273,8 @@ function flatSchedule(
       dueDate,
       principalMinor: principalPart,
       principalPartMinor: principalPart,
-      interestMinor: interestPerInstallment,
-      interestPartMinor: interestPerInstallment,
+      interestMinor: interestPart,
+      interestPartMinor: interestPart,
       totalMinor: total,
       emiMinor: total,
       outstandingMinor: Math.max(0, outstanding),
@@ -304,5 +314,7 @@ export function outstandingAsOf(schedule: AmortizationRow[], asOfDate: string): 
       return row.outstandingMinor
     }
   }
-  return schedule[0]?.outstandingMinor ?? 0
+  // No installment is due yet: the whole principal is still outstanding.
+  const first = schedule[0]
+  return first ? first.outstandingMinor + first.principalMinor : 0
 }

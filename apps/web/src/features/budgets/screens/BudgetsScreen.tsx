@@ -105,9 +105,10 @@ export default function BudgetsScreen() {
         `${currentMonth}-01`,
         monthStartDay,
         todayStr,
+        categories ?? [],
       ),
     )
-  }, [allBudgets, transactions, currentMonth, monthStartDay, todayStr])
+  }, [allBudgets, transactions, categories, currentMonth, monthStartDay, todayStr])
 
   // Aggregate stats across all budgets
   const aggregate = useMemo(() => {

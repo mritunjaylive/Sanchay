@@ -61,7 +61,7 @@ serve(async (req: Request) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
       },
     })
   }
@@ -73,6 +73,19 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase service credentials' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Writes with the service role: only the scheduler / an administrator may trigger a refresh.
+  const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  const cronSecret = Deno.env.get('CRON_SECRET')
+  const authorized =
+    (!!bearer && bearer === serviceRoleKey) ||
+    (!!cronSecret && req.headers.get('x-cron-secret') === cronSecret)
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   }
 

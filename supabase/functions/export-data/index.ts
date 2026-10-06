@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
 serve(async (req) => {
@@ -45,33 +46,59 @@ serve(async (req) => {
   const userId = user.id
 
   try {
+    // Every user-owned synced table (must match the sync whitelist) plus push subscriptions.
     const tables = [
       'profiles',
       'accounts',
+      'loan_terms',
       'categories',
+      'tags',
       'transactions',
+      'transaction_tags',
+      'attachments',
       'budgets',
       'recurring_rules',
-      'loans',
-      'loan_payments',
+      'recurring_overrides',
       'goals',
       'goal_contributions',
+      'saved_filters',
       'notifications',
     ]
 
     const exportPayload: Record<string, unknown[]> = {}
+    const failedTables: string[] = []
+    const PAGE = 1000 // PostgREST caps a single response (default 1000 rows)
 
     for (const table of tables) {
-      const { data, error } = await client
-        .from(table)
-        .select('*')
-        .eq('user_id', userId)
+      const rows: unknown[] = []
+      let failed = false
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await client
+          .from(table)
+          .select('*')
+          .eq('user_id', userId)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1)
 
-      if (error) {
-        console.warn(`Export error on table ${table}:`, error)
-      } else {
-        exportPayload[table] = data ?? []
+        if (error) {
+          console.warn(`Export error on table ${table}:`, error)
+          failed = true
+          break
+        }
+        rows.push(...(data ?? []))
+        if (!data || data.length < PAGE) break
       }
+
+      if (failed) {
+        failedTables.push(table)
+      } else {
+        exportPayload[table] = rows
+      }
+    }
+
+    // A silently incomplete export is worse than a failed one.
+    if (failedTables.length > 0) {
+      throw new Error(`Export incomplete; failed tables: ${failedTables.join(', ')}`)
     }
 
     const result = {

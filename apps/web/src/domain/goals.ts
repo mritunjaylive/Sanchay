@@ -7,6 +7,7 @@
  */
 
 import type { Goal, GoalContribution } from '@sanchay/shared'
+import { todayLocal } from './dates'
 
 export interface GoalProgress {
   goal: Goal
@@ -27,7 +28,7 @@ export function calculateGoalProgress(
   goal: Goal,
   contributions: GoalContribution[],
   linkedAccountBalanceMinor?: number,
-  todayStr = new Date().toISOString().substring(0, 10),
+  todayStr = todayLocal(),
 ): GoalProgress {
   let progressMinor = 0
 

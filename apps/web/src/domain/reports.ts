@@ -299,7 +299,8 @@ export function calculateTopPayees(
   endDate: string,
   limit = 10,
 ): PayeeSummaryItem[] {
-  const map = new Map<string, { amountMinor: number; count: number }>()
+  // Group case-insensitively ("Swiggy" and "swiggy" are the same payee), keep first-seen casing.
+  const map = new Map<string, { payee: string; amountMinor: number; count: number }>()
 
   for (const tx of transactions) {
     if (tx.deletedAt) continue
@@ -310,17 +311,19 @@ export function calculateTopPayees(
     const payeeName = tx.payee.trim()
     if (!payeeName) continue
 
+    const key = payeeName.toLowerCase()
     const amount = tx.baseAmountMinor ?? tx.amountMinor
-    const existing = map.get(payeeName) ?? { amountMinor: 0, count: 0 }
-    map.set(payeeName, {
+    const existing = map.get(key) ?? { payee: payeeName, amountMinor: 0, count: 0 }
+    map.set(key, {
+      payee: existing.payee,
       amountMinor: existing.amountMinor + amount,
       count: existing.count + 1,
     })
   }
 
-  return Array.from(map.entries())
-    .map(([payee, stats]) => ({
-      payee,
+  return Array.from(map.values())
+    .map((stats) => ({
+      payee: stats.payee,
       amountMinor: stats.amountMinor,
       count: stats.count,
     }))

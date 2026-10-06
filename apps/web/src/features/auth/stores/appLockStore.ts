@@ -41,6 +41,24 @@ export const AUTO_LOCK_OPTIONS: Array<{ value: number; labelKey: string; default
   { value: -1, labelKey: 'settings.lockOnRestart', defaultLabel: 'Only when app restarts', isHighRisk: true },
 ]
 
+/** Records one failed PIN attempt (escalating lockout) in memory and in IndexedDB. */
+async function recordFailedAttempt(
+  get: () => AppLockState,
+  set: (partial: Partial<AppLockState>) => void,
+  now = Date.now(),
+): Promise<number> {
+  const nextAttempts = get().failedAttempts + 1
+  const lockoutDuration = getLockoutDurationSeconds(nextAttempts)
+  const nextLockoutUntil = lockoutDuration > 0 ? now + lockoutDuration * 1000 : null
+
+  set({ failedAttempts: nextAttempts, lockoutUntil: nextLockoutUntil })
+  await db.kv.put({
+    key: LOCKOUT_STATE_KEY,
+    value: { failedAttempts: nextAttempts, lockoutUntil: nextLockoutUntil },
+  })
+  return lockoutDuration
+}
+
 export interface AppLockState {
   hasPin: boolean
   isLocked: boolean
@@ -123,7 +141,8 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
         })
 
         window.addEventListener('pagehide', onHidden)
-        window.addEventListener('freeze', onHidden)
+        // `freeze` is dispatched on the document, not the window
+        document.addEventListener('freeze', onHidden)
       }
     } catch (err) {
       console.error('Failed to initialize appLockStore:', err)
@@ -214,8 +233,14 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
       if (!currentPinForVerification) {
         return { success: false, error: 'pin_required' }
       }
+      // PIN guesses made here count towards the same lockout as the lock screen.
+      const { lockoutUntil } = get()
+      if (lockoutUntil && Date.now() < lockoutUntil) {
+        return { success: false, error: 'locked_out' }
+      }
       const { isValid } = await verifyPinWithConfig(currentPinForVerification, config)
       if (!isValid) {
+        await recordFailedAttempt(get, set)
         return { success: false, error: 'invalid_pin' }
       }
     }
@@ -232,10 +257,19 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
 
   removePin: async (currentPinForVerification?: string) => {
     const entry = await db.kv.get(PIN_CONFIG_KEY)
-    if (entry?.value && currentPinForVerification) {
+    if (entry?.value) {
+      // Removing the lock always requires the current PIN.
+      if (!currentPinForVerification) {
+        return { success: false, error: 'pin_required' }
+      }
+      const { lockoutUntil } = get()
+      if (lockoutUntil && Date.now() < lockoutUntil) {
+        return { success: false, error: 'locked_out' }
+      }
       const config = entry.value as StoredPinConfig
       const { isValid } = await verifyPinWithConfig(currentPinForVerification, config)
       if (!isValid) {
+        await recordFailedAttempt(get, set)
         return { success: false, error: 'invalid_pin' }
       }
     }
@@ -258,7 +292,7 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
   },
 
   verifyAndUnlock: async (pin: string) => {
-    const { lockoutUntil, failedAttempts } = get()
+    const { lockoutUntil } = get()
     const now = Date.now()
 
     if (lockoutUntil && now < lockoutUntil) {
@@ -302,23 +336,7 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
 
       return { success: true }
     } else {
-      const nextAttempts = failedAttempts + 1
-      const lockoutDuration = getLockoutDurationSeconds(nextAttempts)
-      const nextLockoutUntil = lockoutDuration > 0 ? now + lockoutDuration * 1000 : null
-
-      set({
-        failedAttempts: nextAttempts,
-        lockoutUntil: nextLockoutUntil,
-      })
-
-      await db.kv.put({
-        key: LOCKOUT_STATE_KEY,
-        value: {
-          failedAttempts: nextAttempts,
-          lockoutUntil: nextLockoutUntil,
-        },
-      })
-
+      const lockoutDuration = await recordFailedAttempt(get, set, now)
       return { success: false, lockoutSeconds: lockoutDuration }
     }
   },

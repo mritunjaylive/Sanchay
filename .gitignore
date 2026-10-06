@@ -113,3 +113,4 @@ implementation_plan.md
 Sanchay_spec.md
 Sanchay_UI_Overhaul_Prompt.md
 Sanchay_Bug_Fix_Prompt.md
+*.patch

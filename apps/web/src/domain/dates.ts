@@ -63,6 +63,36 @@ export function periodFor(dateStr: string, monthStartDay: number): Period {
   return { label, start, end }
 }
 
+/**
+ * Build the billing period whose label is `label` (YYYY-MM = calendar month in which it STARTS).
+ * Unlike `periodFor('YYYY-MM-01', day)` this never shifts into the previous period when
+ * `monthStartDay > 1`.
+ */
+export function periodForLabel(label: string, monthStartDay: number): Period {
+  const [yearStr, monthStr] = label.split('-')
+  const year = parseInt(yearStr!, 10)
+  const month = parseInt(monthStr!, 10)
+  const start = `${year}-${String(month).padStart(2, '0')}-${String(monthStartDay).padStart(2, '0')}`
+  return {
+    label: `${year}-${String(month).padStart(2, '0')}`,
+    start,
+    end: periodEnd(year, month, monthStartDay),
+  }
+}
+
+/** Whole days from `fromDate` to `toDate` (YYYY-MM-DD), without UTC conversion. Negative if `toDate` is earlier. */
+export function daysBetween(fromDate: string, toDate: string): number {
+  const [fy, fm, fd] = fromDate.split('-').map(Number) as [number, number, number]
+  const [ty, tm, td] = toDate.split('-').map(Number) as [number, number, number]
+  // Date.UTC is used purely as a day counter (no time-zone or DST shifts).
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000)
+}
+
+/** Today's LOCAL calendar date (YYYY-MM-DD). Never goes through UTC. */
+export function todayLocal(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
 /** Get the end date of a period (the day before the next period starts). */
 function periodEnd(periodYear: number, periodMonth: number, monthStartDay: number): string {
   let nextYear: number
@@ -75,24 +105,8 @@ function periodEnd(periodYear: number, periodMonth: number, monthStartDay: numbe
     nextMonth = periodMonth + 1
   }
 
-  // End = day before next period's start, clamped to last day of the calendar month
-  const nextStartDay = monthStartDay
-  let endDay = nextStartDay - 1
-  if (endDay <= 0) {
-    // Wrap to previous month's last day
-    if (nextMonth === 1) {
-      return `${nextYear - 1}-12-31`
-    }
-    const daysInPrevMonth = daysInMonth(nextYear, nextMonth - 1)
-    return `${nextYear}-${String(nextMonth - 1).padStart(2, '0')}-${daysInPrevMonth}`
-  }
-
-  // Clamp to last day of next calendar month
-  const daysInNextMonth = daysInMonth(nextYear, nextMonth)
-  endDay = Math.min(endDay, daysInNextMonth - 1)
-  // Actually it's in the next calendar month minus 1 day
-  // End date = next period start - 1 day
-  const nextStartStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(nextStartDay).padStart(2, '0')}`
+  // End date = (next period start) - 1 day
+  const nextStartStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(monthStartDay).padStart(2, '0')}`
   return subtractOneDay(nextStartStr)
 }
 

@@ -166,7 +166,8 @@ export const fxService = {
       rateUsed = manualRateStr.trim()
     } else {
       const rate = await this.getRate(from, to, dateStr)
-      rateUsed = rate.toString()
+      // toFixed avoids exponent notation (e.g. "1e-7"), which the decimal parser rejects.
+      rateUsed = rate.toFixed(12).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
     }
 
     const baseAmountMinor = convertFx(amountMinor, from, to, rateUsed)

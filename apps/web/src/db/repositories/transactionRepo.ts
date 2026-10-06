@@ -123,6 +123,23 @@ export const transactionRepo = {
       // Add new
       for (const tid of tagIds) {
         if (!currentTagIds.has(tid)) {
+          // Revive a previously removed link instead of creating a second row for the same
+          // (transaction, tag) pair, which the server's uniqueness rules would reject.
+          const tombstone = await db.transactionTags
+            .where('transactionId')
+            .equals(id)
+            .and((r) => r.tagId === tid && !!r.deletedAt)
+            .first()
+          if (tombstone) {
+            await upsertWithOutbox(db.transactionTags, 'transaction_tags', {
+              ...tombstone,
+              deletedAt: null,
+              updatedAt: now,
+              version: (tombstone.version ?? 1) + 1,
+            })
+            continue
+          }
+
           const newTagRow: TransactionTag = {
             id: uuidv7(),
             userId: existing.userId,
@@ -170,6 +187,10 @@ export const transactionRepo = {
 
     return this.create({
       ...rest,
+      // A copy must never claim the original's recurring slot (unique per rule + occurrence date).
+      recurringRuleId: null,
+      recurringOccurrenceDate: null,
+      source: 'manual',
       tagIds,
     })
   },

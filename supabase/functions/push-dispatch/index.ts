@@ -3,15 +3,99 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-interface WebPushNotification {
+interface Reminder {
   userId: string
+  kind: 'bill_reminder' | 'loan_reminder'
   title: string
   body: string
   url: string
   dedupeKey: string
+}
+
+const DAY_MS = 86_400_000
+
+// ── Date helpers (calendar dates as YYYY-MM-DD, UTC arithmetic used only as a day counter) ──
+const pad = (n: number) => String(n).padStart(2, '0')
+const fmt = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`
+const dim = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate()
+const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10)
+const parts = (date: string) => date.split('-').map(Number) as [number, number, number]
+
+interface RuleRow {
+  id: string
+  user_id: string
+  title: string
+  freq: 'daily' | 'weekly' | 'monthly' | 'yearly'
+  interval: number
+  by_weekday: number[] | null
+  by_month_day: number | null
+  start_date: string
+  end_date: string | null
+  max_count: number | null
+  amount_minor: number
+  remind_days_before: number
+}
+
+/** Next occurrence of `step(current)`; mirrors the client's re-anchored recurrence rules. */
+function nextOccurrence(rule: RuleRow, current: string): string {
+  const [y, m, d] = parts(current)
+  switch (rule.freq) {
+    case 'daily':
+      return addDays(current, rule.interval)
+    case 'weekly': {
+      if (rule.by_weekday && rule.by_weekday.length > 0) {
+        const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+        const sorted = [...rule.by_weekday].sort((a, b) => a - b)
+        const later = sorted.find((x) => x > wd)
+        if (later !== undefined) return addDays(current, later - wd)
+        return addDays(current, 7 - wd + sorted[0]! + (rule.interval - 1) * 7)
+      }
+      return addDays(current, rule.interval * 7)
+    }
+    case 'monthly': {
+      let nm = m + rule.interval
+      let ny = y
+      while (nm > 12) {
+        nm -= 12
+        ny++
+      }
+      const anchor = rule.by_month_day ?? parts(rule.start_date)[2]
+      const last = dim(ny, nm)
+      return fmt(ny, nm, anchor === -1 ? last : Math.min(anchor, last))
+    }
+    case 'yearly': {
+      const [, sm, sd] = parts(rule.start_date)
+      const ny = y + rule.interval
+      return fmt(ny, sm, Math.min(sd, dim(ny, sm)))
+    }
+  }
+}
+
+/** First occurrence on or after `from` (or null when the rule has ended). */
+function nextDueOnOrAfter(rule: RuleRow, from: string): string | null {
+  let current = rule.start_date
+  let count = 0
+  for (let guard = 0; guard < 5000; guard++) {
+    if (rule.max_count !== null && count >= rule.max_count) return null
+    if (rule.end_date && current > rule.end_date) return null
+    if (current >= from) return current
+    const next = nextOccurrence(rule, current)
+    if (next === current) return null
+    current = next
+    count++
+  }
+  return null
+}
+
+function isAuthorized(req: Request, serviceKey: string): boolean {
+  const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '')
+  if (bearer && bearer === serviceKey) return true
+  const cronSecret = Deno.env.get('CRON_SECRET')
+  return !!cronSecret && req.headers.get('x-cron-secret') === cronSecret
 }
 
 serve(async (req) => {
@@ -29,93 +113,124 @@ serve(async (req) => {
     })
   }
 
+  // This job runs with the service role for every user: only the scheduler may call it.
+  if (!isAuthorized(req, supabaseServiceKey)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const notificationsToDispatch: WebPushNotification[] = []
+    const today = new Date().toISOString().split('T')[0]!
+    const reminders: Reminder[] = []
 
-    // 1. Check due/upcoming recurring bills (remind_only or auto_post)
-    const { data: recurringRules, error: recurringError } = await supabase
+    // 1. Upcoming recurring bills (active rules only)
+    const { data: rules, error: rulesError } = await supabase
       .from('recurring_rules')
-      .select('id, user_id, name, amount_minor, next_date, remind_days_before')
+      .select(
+        'id, user_id, title, freq, interval, by_weekday, by_month_day, start_date, end_date, max_count, amount_minor, remind_days_before',
+      )
       .is('deleted_at', null)
-      .lte('next_date', new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0])
+      .is('paused_at', null)
 
-    if (!recurringError && recurringRules) {
-      for (const rule of recurringRules) {
-        const remindDays = rule.remind_days_before ?? 2
-        const dueDate = new Date(rule.next_date)
-        const remindDate = new Date(dueDate.getTime() - remindDays * 86400000).toISOString().split('T')[0]
+    if (rulesError) throw new Error(`recurring_rules query failed: ${rulesError.message}`)
 
-        if (today >= remindDate) {
-          notificationsToDispatch.push({
-            userId: rule.user_id,
-            title: `Bill Reminder: ${rule.name}`,
-            body: `Due on ${rule.next_date}. Don't forget to pay or record it.`,
-            url: '/bills',
-            dedupeKey: `bill-${rule.id}-${rule.next_date}`,
-          })
-        }
+    for (const rule of (rules ?? []) as RuleRow[]) {
+      const due = nextDueOnOrAfter(rule, today)
+      if (!due) continue
+      const remindFrom = addDays(due, -(rule.remind_days_before ?? 1))
+      if (today >= remindFrom) {
+        reminders.push({
+          userId: rule.user_id,
+          kind: 'bill_reminder',
+          title: `Bill reminder: ${rule.title}`.slice(0, 120),
+          body: `Due on ${due}. Don't forget to pay or record it.`,
+          url: '/bills',
+          dedupeKey: `bill-${rule.id}-${due}`,
+        })
       }
     }
 
-    // 2. Check loan EMI due dates
+    // 2. Loan EMIs due within the next 3 days
     const { data: loans, error: loanError } = await supabase
-      .from('loans')
-      .select('id, user_id, name, monthly_payment_minor, start_date')
+      .from('loan_terms')
+      .select('id, user_id, account_id, payment_day, start_date, direction')
       .is('deleted_at', null)
+      .eq('direction', 'borrowed')
 
-    if (!loanError && loans) {
-      const currentDay = new Date().getDate()
-      for (const loan of loans) {
-        const startDay = new Date(loan.start_date).getDate()
-        // If within 3 days of EMI day
-        if (Math.abs(startDay - currentDay) <= 3) {
-          notificationsToDispatch.push({
-            userId: loan.user_id,
-            title: `Loan EMI Reminder: ${loan.name}`,
-            body: `Your loan payment is due around day ${startDay} of this month.`,
-            url: '/loans',
-            dedupeKey: `loan-${loan.id}-${today.substring(0, 7)}`,
-          })
-        }
-      }
+    if (loanError) throw new Error(`loan_terms query failed: ${loanError.message}`)
+
+    const accountIds = [...new Set((loans ?? []).map((l) => l.account_id as string))]
+    const accountNames = new Map<string, string>()
+    if (accountIds.length > 0) {
+      const { data: accts } = await supabase.from('accounts').select('id, name').in('id', accountIds)
+      for (const a of accts ?? []) accountNames.set(a.id as string, a.name as string)
     }
 
-    let createdCount = 0
+    const [ty, tm] = parts(today)
+    for (const loan of loans ?? []) {
+      const payDay = (loan.payment_day as number | null) ?? parts(loan.start_date as string)[2]
+      // Candidate due dates: this month and next month (handles month boundaries).
+      const candidates = [
+        fmt(ty, tm, Math.min(payDay, dim(ty, tm))),
+        tm === 12 ? fmt(ty + 1, 1, Math.min(payDay, dim(ty + 1, 1))) : fmt(ty, tm + 1, Math.min(payDay, dim(ty, tm + 1))),
+      ]
+      const due = candidates.find((c) => c >= today && c <= addDays(today, 3))
+      if (!due) continue
+      const name = accountNames.get(loan.account_id as string) ?? 'Loan'
+      reminders.push({
+        userId: loan.user_id as string,
+        kind: 'loan_reminder',
+        title: `Loan EMI reminder: ${name}`.slice(0, 120),
+        body: `Your loan payment is due on ${due}.`,
+        url: '/loans',
+        dedupeKey: `loan-${loan.id}-${due}`,
+      })
+    }
 
-    // 3. Insert in-app notifications with dedupe_key
-    for (const item of notificationsToDispatch) {
-      // Check if notification already exists with this dedupe_key
-      const { data: existing } = await supabase
+    // 3. Insert in-app notifications (once per dedupe key, never again after the user dismissed it)
+    let createdCount = 0
+    const nowIso = new Date().toISOString()
+    for (const item of reminders) {
+      const { data: existing, error: existingError } = await supabase
         .from('notifications')
         .select('id')
         .eq('user_id', item.userId)
         .eq('dedupe_key', item.dedupeKey)
-        .is('deleted_at', null)
+        .limit(1)
         .maybeSingle()
+      if (existingError) {
+        console.warn('notification lookup failed:', existingError.message)
+        continue
+      }
+      if (existing) continue
 
-      if (!existing) {
-        const { error: insertError } = await supabase.from('notifications').insert({
-          user_id: item.userId,
-          title: item.title,
-          body: item.body,
-          type: 'bill_reminder',
-          dedupe_key: item.dedupeKey,
-          data: { url: item.url },
-        })
+      const { error: insertError } = await supabase.from('notifications').insert({
+        id: crypto.randomUUID(),
+        user_id: item.userId,
+        kind: item.kind,
+        title: item.title,
+        body: item.body,
+        payload: { url: item.url },
+        dedupe_key: item.dedupeKey,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
 
-        if (!insertError) {
-          createdCount++
-        }
+      if (insertError) {
+        console.warn('notification insert failed:', insertError.message)
+      } else {
+        createdCount++
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        dispatchedCandidates: notificationsToDispatch.length,
+        dispatchedCandidates: reminders.length,
         createdNotifications: createdCount,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

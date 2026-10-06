@@ -59,6 +59,27 @@ function classifyAuthError(err: AuthError | null): AuthErrorCode {
   return 'unknown'
 }
 
+/** `ok: false` means nothing was done because unsynced local changes would be lost. */
+export interface SignOutResult {
+  ok: boolean
+  pending: number
+}
+
+export interface SignOutOptions {
+  /** Sign out even though some local changes could not be synced (they are lost). */
+  discardUnsynced?: boolean
+}
+
+/** Tries a final sync and returns how many outbox rows are still unsynced. */
+async function flushPendingChanges(): Promise<number> {
+  try {
+    const { syncEngine } = await import('../../../features/sync/services/syncEngine')
+    return await syncEngine.flush(8000)
+  } catch {
+    return db.outbox.count().catch(() => 0)
+  }
+}
+
 export interface AuthSignInResult {
   error: AuthErrorCode | null
 }
@@ -82,8 +103,8 @@ interface AuthState {
   signInWithGoogle: () => Promise<{ error: string | null }>
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>
   resendConfirmation: (email: string) => Promise<{ error: string | null }>
-  signOut: () => Promise<void>
-  signOutAll: () => Promise<void>
+  signOut: (opts?: SignOutOptions) => Promise<SignOutResult>
+  signOutAll: (opts?: SignOutOptions) => Promise<SignOutResult>
   deleteAccount: () => Promise<{ error: string | null }>
   resetPassword: (email: string) => Promise<{ error: string | null }>
   setProfile: (profile: Profile) => void
@@ -447,27 +468,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return { error: null }
   },
 
-  signOut: async () => {
+  signOut: async (opts) => {
     const userId = get().session?.user?.id
 
-    // Safety check: warn about unsynced outbox rows
-    // (actual dialog is shown by the UI layer; here we just clean up)
-    try {
-      const pending = await db.outbox.count()
-      if (pending > 0) {
-        // Try a final push with short timeout (best-effort)
-        try {
-          const { syncEngine } = await import('../../../features/sync/services/syncEngine')
-          await Promise.race([
-            syncEngine.triggerSync(true),
-            new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-          ])
-        } catch {
-          // Ignore push failures
-        }
-      }
-    } catch {
-      // Ignore outbox check failures
+    // Safety: never wipe local data that has not reached the server unless explicitly told to.
+    if (!opts?.discardUnsynced) {
+      const pending = await flushPendingChanges()
+      if (pending > 0) return { ok: false, pending }
     }
 
     try {
@@ -491,10 +498,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.wipeAll()
       set({ session: null, profile: null, hydrationStatus: 'ready' })
     }
+    return { ok: true, pending: 0 }
   },
 
-  signOutAll: async () => {
+  signOutAll: async (opts) => {
     const userId = get().session?.user?.id
+
+    if (!opts?.discardUnsynced) {
+      const pending = await flushPendingChanges()
+      if (pending > 0) return { ok: false, pending }
+    }
 
     try {
       localStorage.removeItem('sanchay_offline_session')
@@ -517,6 +530,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.wipeAll()
       set({ session: null, profile: null, hydrationStatus: 'ready' })
     }
+    return { ok: true, pending: 0 }
   },
 
   deleteAccount: async () => {

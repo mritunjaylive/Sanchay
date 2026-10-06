@@ -27,6 +27,7 @@ export function suggestPayees(
 
   const frequencyMap = new Map<string, number>()
   const originalCasingMap = new Map<string, string>()
+  const lastSeenMap = new Map<string, string>()
 
   for (const tx of transactions) {
     if (tx.deletedAt || !tx.payee) continue
@@ -39,11 +40,21 @@ export function suggestPayees(
       if (!originalCasingMap.has(lower)) {
         originalCasingMap.set(lower, trimmed)
       }
+      if (tx.occurredOn > (lastSeenMap.get(lower) ?? '')) {
+        lastSeenMap.set(lower, tx.occurredOn)
+      }
     }
   }
 
+  // Rank: prefix matches first, then by frequency, then by most recent use.
   return Array.from(frequencyMap.entries())
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => {
+      const prefixA = a[0].startsWith(normalizedQuery) ? 1 : 0
+      const prefixB = b[0].startsWith(normalizedQuery) ? 1 : 0
+      if (prefixA !== prefixB) return prefixB - prefixA
+      if (a[1] !== b[1]) return b[1] - a[1]
+      return (lastSeenMap.get(b[0]) ?? '').localeCompare(lastSeenMap.get(a[0]) ?? '')
+    })
     .slice(0, limit)
     .map(([lower]) => originalCasingMap.get(lower)!)
 }

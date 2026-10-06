@@ -5,6 +5,7 @@ import type {
   Goal, GoalContribution, SavedFilter, Notification,
 } from '@sanchay/shared'
 import type { OutboxEntry, SyncState } from '@sanchay/shared'
+import { toServer } from './mapper'
 
 /**
  * Local-only types (not in shared package)
@@ -169,6 +170,23 @@ class SanchayDB extends Dexie {
             .where('table').equals('profiles')
             .filter((e: OutboxEntry) => e.rowId === profile.id)
             .delete()
+
+          // ...and queue the re-keyed profile so it actually reaches the server.
+          const rekeyed = await tx.table('profiles').get(correctId) as Profile | undefined
+          if (rekeyed) {
+            await tx.table('outbox').add({
+              table: 'profiles',
+              rowId: correctId,
+              op: 'upsert',
+              snapshot: toServer(rekeyed as unknown as Record<string, unknown>),
+              updatedAt: rekeyed.updatedAt,
+              attempt: 0,
+              attempts: 0,
+              lastError: null,
+              lastAttemptAt: null,
+              status: 'pending',
+            })
+          }
         }
       })
 

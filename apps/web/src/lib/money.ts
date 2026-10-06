@@ -81,10 +81,17 @@ export function parseDecimalToScaled(
     throw new RangeError(`Multiple decimal separators in "${str}"`)
   }
 
-  const intPartStr = parts[0] || '0'
-  const fracPartStr = parts[1] || ''
+  const rawInt = parts[0] ?? ''
+  const rawFrac = parts[1] ?? ''
+  // A bare separator ("." or ",") or a lone sign carries no digits at all.
+  if (rawInt === '' && rawFrac === '') {
+    throw new RangeError(`Cannot parse "${str}" as decimal`)
+  }
 
-  if (!/^\d*$/.test(intPartStr) || !/^\d*$/.test(fracPartStr) || (intPartStr === '' && fracPartStr === '')) {
+  const intPartStr = rawInt || '0'
+  const fracPartStr = rawFrac
+
+  if (!/^\d*$/.test(intPartStr) || !/^\d*$/.test(fracPartStr)) {
     throw new RangeError(`Cannot parse "${str}" as decimal`)
   }
 
@@ -227,8 +234,9 @@ export function subtractMinor(a: number, b: number): number {
  */
 export function multiplyMinor(minor: number, rate: number, targetExp: number, sourceExp: number): number {
   // Convert rate string to scaled integer for pure decimal math
-  const rateStr = rate.toString()
   const RATE_SCALE = 12
+  // toFixed never yields exponent notation (e.g. "1e-7"), which parseDecimalToScaled rejects.
+  const rateStr = rate.toFixed(RATE_SCALE)
   const rateScaled = parseDecimalToScaled(rateStr, RATE_SCALE, '.')
   const numerator = BigInt(minor) * rateScaled * (10n ** BigInt(targetExp))
   const denominator = (10n ** BigInt(sourceExp)) * (10n ** BigInt(RATE_SCALE))
@@ -353,8 +361,8 @@ export function evaluateExpression(expr: string, currency: string, decimalSep: '
   }
 
   function parseUnary(): bigint {
-    if (peek() === '-') { consume(); return -parseAtom() }
-    if (peek() === '+') { consume(); return parseAtom() }
+    if (peek() === '-') { consume(); return -parseUnary() }
+    if (peek() === '+') { consume(); return parseUnary() }
     return parseAtom()
   }
 
@@ -367,8 +375,10 @@ export function evaluateExpression(expr: string, currency: string, decimalSep: '
       return val
     }
     const t = consume()
+    // Drop thousands separators ("1,234" with '.' decimals), as parseAmountToMinor does.
+    const groupSep = decimalSep === '.' ? ',' : '.'
     try {
-      return parseDecimalToScaled(t, EXPR_SCALE, decimalSep)
+      return parseDecimalToScaled(t.split(groupSep).join(''), EXPR_SCALE, decimalSep)
     } catch {
       throw new Error(`Invalid token: "${t}"`)
     }

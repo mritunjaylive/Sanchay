@@ -56,29 +56,71 @@ export const categoryRepo = {
     return updated
   },
 
-  async delete(id: string, reassignToCategoryId?: string): Promise<void> {
-    if (reassignToCategoryId) {
-      // Reassign transactions
-      const txs = await db.transactions
-        .filter((tx) => !tx.deletedAt && tx.categoryId === id)
-        .toArray()
+  /**
+   * Re-points everything that references category `id` and soft-deletes nothing itself.
+   * With a target: transactions, budgets, recurring rules and sub-categories move to it.
+   * Without one: sub-categories become top-level, rules lose their category and budgets on the
+   * category are removed (a budget on a deleted category is meaningless).
+   */
+  async _reassignReferences(id: string, targetId?: string): Promise<void> {
+    const now = new Date().toISOString()
+    const target = targetId ? await db.categories.get(targetId) : undefined
+
+    if (targetId) {
+      const txs = await db.transactions.filter((tx) => !tx.deletedAt && tx.categoryId === id).toArray()
       for (const tx of txs) {
-        if (!tx.deletedAt) {
-          const now = new Date().toISOString()
-          await upsertWithOutbox(db.transactions, 'transactions', {
-            ...tx,
-            categoryId: reassignToCategoryId,
-            updatedAt: now,
-            version: (tx.version ?? 1) + 1,
-          })
-        }
+        await upsertWithOutbox(db.transactions, 'transactions', {
+          ...tx,
+          categoryId: targetId,
+          updatedAt: now,
+          version: (tx.version ?? 1) + 1,
+        })
       }
     }
 
+    const budgets = await db.budgets.filter((b) => !b.deletedAt && b.categoryId === id).toArray()
+    for (const b of budgets) {
+      if (targetId) {
+        await upsertWithOutbox(db.budgets, 'budgets', {
+          ...b,
+          categoryId: targetId,
+          updatedAt: now,
+          version: (b.version ?? 1) + 1,
+        })
+      } else {
+        await softDeleteWithOutbox(db.budgets, 'budgets', b.id)
+      }
+    }
+
+    const rules = await db.recurringRules.filter((r) => !r.deletedAt && r.categoryId === id).toArray()
+    for (const r of rules) {
+      await upsertWithOutbox(db.recurringRules, 'recurring_rules', {
+        ...r,
+        categoryId: targetId ?? null,
+        updatedAt: now,
+        version: (r.version ?? 1) + 1,
+      })
+    }
+
+    // Sub-categories: keep the hierarchy at most 2 levels deep.
+    const children = await db.categories.filter((c) => !c.deletedAt && c.parentId === id).toArray()
+    for (const c of children) {
+      await upsertWithOutbox(db.categories, 'categories', {
+        ...c,
+        parentId: target ? (target.parentId ?? target.id) : null,
+        updatedAt: now,
+        version: (c.version ?? 1) + 1,
+      })
+    }
+  },
+
+  async delete(id: string, reassignToCategoryId?: string): Promise<void> {
+    await this._reassignReferences(id, reassignToCategoryId)
     await softDeleteWithOutbox(db.categories, 'categories', id)
   },
 
   async merge(sourceId: string, targetId: string): Promise<void> {
+    if (sourceId === targetId) return
     await this.delete(sourceId, targetId)
   },
 
@@ -105,7 +147,8 @@ export const categoryRepo = {
     for (const cat of sorted) {
       const normName = cat.name.trim().toLowerCase()
       // If userId is provided, group per user if possible, or cross-user if one is orphan/offline
-      const key = `${cat.kind}:${normName}`
+      // Sub-categories with the same name under different parents are NOT duplicates.
+      const key = `${cat.kind}:${cat.parentId ?? ''}:${normName}`
       const existing = canonicalMap.get(key)
       if (!existing) {
         canonicalMap.set(key, cat)
@@ -117,52 +160,12 @@ export const categoryRepo = {
     if (duplicates.length === 0) return
 
     for (const { duplicate, canonical } of duplicates) {
-      // 1. Reassign transactions
-      const txs = await db.transactions
-        .filter((tx) => !tx.deletedAt && tx.categoryId === duplicate.id)
-        .toArray()
-      for (const tx of txs) {
-        await upsertWithOutbox(db.transactions, 'transactions', {
-          ...tx,
-          categoryId: canonical.id,
-          updatedAt: new Date().toISOString(),
-          version: (tx.version ?? 1) + 1,
-        })
-      }
+      // Moves transactions, budgets, rules and child categories onto the canonical row.
+      await this._reassignReferences(duplicate.id, canonical.id)
 
-      // 2. Reassign budgets
-      const budgets = await db.budgets
-        .filter((b) => !b.deletedAt && b.categoryId === duplicate.id)
-        .toArray()
-      for (const b of budgets) {
-        await upsertWithOutbox(db.budgets, 'budgets', {
-          ...b,
-          categoryId: canonical.id,
-          updatedAt: new Date().toISOString(),
-          version: (b.version ?? 1) + 1,
-        })
-      }
-
-      // 3. Reassign recurring rules
-      const rules = await db.recurringRules
-        .filter((r) => !r.deletedAt && r.categoryId === duplicate.id)
-        .toArray()
-      for (const r of rules) {
-        await upsertWithOutbox(db.recurringRules, 'recurring_rules', {
-          ...r,
-          categoryId: canonical.id,
-          updatedAt: new Date().toISOString(),
-          version: (r.version ?? 1) + 1,
-        })
-      }
-
-      // 4. Delete the duplicate category from local table and outbox
-      await db.categories.delete(duplicate.id)
-      await db.outbox
-        .where('table')
-        .equals('categories')
-        .and((e) => e.rowId === duplicate.id)
-        .delete()
+      // Soft-delete (not a local hard delete): the server copy must receive the tombstone,
+      // otherwise the duplicate would be pulled back on the next sync.
+      await softDeleteWithOutbox(db.categories, 'categories', duplicate.id)
     }
   },
 
@@ -281,10 +284,33 @@ export const tagRepo = {
   },
 
   async merge(sourceTagId: string, targetTagId: string): Promise<void> {
+    if (sourceTagId === targetTagId) return
     const rows = await db.transactionTags.where('tagId').equals(sourceTagId).toArray()
     const now = new Date().toISOString()
     for (const r of rows) {
-      if (!r.deletedAt) {
+      if (r.deletedAt) continue
+
+      const targetRows = await db.transactionTags
+        .where('transactionId')
+        .equals(r.transactionId)
+        .and((x) => x.tagId === targetTagId)
+        .toArray()
+      const live = targetRows.find((x) => !x.deletedAt)
+      const tombstone = targetRows.find((x) => !!x.deletedAt)
+
+      if (live) {
+        // Transaction already carries the target tag: just drop the source link.
+        await softDeleteWithOutbox(db.transactionTags, 'transaction_tags', r.id)
+      } else if (tombstone) {
+        // Revive the old target link rather than creating a duplicate pair.
+        await upsertWithOutbox(db.transactionTags, 'transaction_tags', {
+          ...tombstone,
+          deletedAt: null,
+          updatedAt: now,
+          version: (tombstone.version ?? 1) + 1,
+        })
+        await softDeleteWithOutbox(db.transactionTags, 'transaction_tags', r.id)
+      } else {
         await upsertWithOutbox(db.transactionTags, 'transaction_tags', {
           ...r,
           tagId: targetTagId,

@@ -119,8 +119,17 @@ export default function SettingsScreen() {
   }
 
   const handleRemovePin = async () => {
-    if (window.confirm('Are you sure you want to remove the PIN lock?')) {
-      await removePin()
+    if (!window.confirm('Are you sure you want to remove the PIN lock?')) return
+    // Removing the lock requires proving knowledge of the current PIN.
+    const currentPin = window.prompt('Enter your current PIN to remove the lock:')
+    if (!currentPin) return
+    const result = await removePin(currentPin)
+    if (!result.success) {
+      window.alert(
+        result.error === 'locked_out'
+          ? 'Too many incorrect attempts. Please try again later.'
+          : 'Incorrect PIN. The lock was not removed.',
+      )
     }
   }
 
@@ -629,7 +638,14 @@ export default function SettingsScreen() {
                   variant="outline"
                   className="flex-1"
                   onClick={async () => {
-                    await signOut()
+                    const result = await signOut()
+                    if (!result.ok) {
+                      const proceed = window.confirm(
+                        `${result.pending} change(s) have not synced yet. Signing out now will permanently discard them. Sign out anyway?`,
+                      )
+                      if (!proceed) return
+                      await signOut({ discardUnsynced: true })
+                    }
                     navigate('/auth/sign-in')
                   }}
                 >
@@ -641,7 +657,14 @@ export default function SettingsScreen() {
                   className="flex-1"
                   onClick={async () => {
                     if (window.confirm('Sign out from all active devices and sessions?')) {
-                      await signOutAll()
+                      const result = await signOutAll()
+                      if (!result.ok) {
+                        const proceed = window.confirm(
+                          `${result.pending} change(s) have not synced yet. Signing out now will permanently discard them. Sign out anyway?`,
+                        )
+                        if (!proceed) return
+                        await signOutAll({ discardUnsynced: true })
+                      }
                       navigate('/auth/sign-in')
                     }
                   }}
