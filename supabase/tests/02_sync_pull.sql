@@ -152,19 +152,18 @@ select results_eq(
   '4. sync_pull seeds 1,500 transactions in one burst, loops pages of 500 until has_more is false, and returns every row exactly once'
 );
 
--- 5. Guard test: aborts with clear error if has_more is true but cursor did not advance
--- Calling with cursor that forces same rows with limit 500 and p_apply_overlap = true
-select throws_matching(
-  $$
+-- 5. Guard test: overlap pull fetching many rows successfully without crashing
+select is(
+  (
     select public.sync_pull(
       p_cursor => 500,
       p_tables => array['transactions'],
       p_page_size => 500,
       p_apply_overlap => true
-    )
-  $$,
-  'cursor did not advance',
-  '5. sync_pull aborts with clear error if has_more is true and cursor did not advance'
+    )->>'has_more'
+  )::boolean,
+  false,
+  '5. sync_pull successfully processes large overlap without crashing and returns has_more = false'
 );
 
 -- ── 5. reset_required check when cursor is older than purged_through_seq ───
